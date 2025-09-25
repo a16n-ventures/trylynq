@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, MapPin, Users, MessageCircle, Plus, Settings, Search } from 'lucide-react';
+import { Bell, MapPin, Users, MessageCircle, Plus, Settings, Search, Crown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 const Dashboard = () => {
@@ -88,6 +88,14 @@ const Dashboard = () => {
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
                 <Bell className="w-5 h-5" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white hover:bg-white/20 p-2"
+                onClick={() => window.location.href = '/premium'}
+              >
+                <Crown className="w-5 h-5" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
                 <Settings className="w-5 h-5" />

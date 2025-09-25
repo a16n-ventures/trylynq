@@ -1,0 +1,220 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Crown, Zap, Star, Users, TrendingUp, Shield, ArrowLeft, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+const Premium = () => {
+  const navigate = useNavigate();
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+
+  const premiumFeatures = [
+    {
+      icon: <Crown className="w-5 h-5" />,
+      title: 'Profile Visibility Boost',
+      description: 'Get 3x more profile views and friend suggestions',
+      price: { monthly: 4.99, yearly: 39.99 }
+    },
+    {
+      icon: <TrendingUp className="w-5 h-5" />,
+      title: 'Event Promotion',
+      description: 'Promote your events to reach more people in your area',
+      price: { monthly: 7.99, yearly: 69.99 }
+    },
+    {
+      icon: <Star className="w-5 h-5" />,
+      title: 'Premium Badge',
+      description: 'Stand out with a special premium badge on your profile',
+      price: { monthly: 2.99, yearly: 24.99 }
+    }
+  ];
+
+  const fullPremiumFeatures = [
+    'Unlimited friend requests',
+    'Advanced search filters',
+    'Priority customer support',
+    'Analytics for your events',
+    'Custom profile themes',
+    'Ad-free experience',
+    'Early access to new features',
+    'Enhanced privacy controls'
+  ];
+
+  const PremiumCard = ({ feature }) => (
+    <Card className="gradient-card shadow-card border-0 relative overflow-hidden">
+      <div className="absolute top-4 right-4">
+        <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black">
+          Popular
+        </Badge>
+      </div>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="gradient-primary text-white w-12 h-12 rounded-xl flex items-center justify-center">
+            {feature.icon}
+          </div>
+          <div>
+            <CardTitle className="heading-md">{feature.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">{feature.description}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-2xl font-bold">
+              ${billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly}
+            </span>
+            <span className="text-muted-foreground">
+              /{billingPeriod === 'monthly' ? 'month' : 'year'}
+            </span>
+          </div>
+          {billingPeriod === 'yearly' && (
+            <Badge variant="secondary" className="bg-green-100 text-green-800">
+              Save 30%
+            </Badge>
+          )}
+        </div>
+        <Button className="w-full gradient-primary text-white">
+          <Zap className="w-4 h-4 mr-2" />
+          Upgrade Now
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="gradient-primary text-white">
+        <div className="container-mobile py-4">
+          <div className="flex items-center gap-3 mb-4">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-white/20 p-2"
+              onClick={() => navigate('/app')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="heading-lg text-white">Premium Features</h1>
+              <p className="opacity-90">Unlock the full potential of FriendlySpot</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container-mobile py-6 space-y-6">
+        {/* Billing Toggle */}
+        <Card className="gradient-card shadow-card border-0">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-center gap-4">
+              <span className={billingPeriod === 'monthly' ? 'font-semibold' : 'text-muted-foreground'}>
+                Monthly
+              </span>
+              <Switch
+                checked={billingPeriod === 'yearly'}
+                onCheckedChange={(checked) => setBillingPeriod(checked ? 'yearly' : 'monthly')}
+              />
+              <span className={billingPeriod === 'yearly' ? 'font-semibold' : 'text-muted-foreground'}>
+                Yearly
+              </span>
+              {billingPeriod === 'yearly' && (
+                <Badge className="bg-green-100 text-green-800">30% OFF</Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Individual Premium Features */}
+        <div className="space-y-4">
+          {premiumFeatures.map((feature, index) => (
+            <PremiumCard key={index} feature={feature} />
+          ))}
+        </div>
+
+        {/* Full Premium Package */}
+        <Card className="gradient-card shadow-card border-0 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5" />
+          <CardHeader className="pb-3 relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="gradient-primary text-white w-12 h-12 rounded-xl flex items-center justify-center">
+                <Crown className="w-6 h-6" />
+              </div>
+              <div>
+                <CardTitle className="heading-lg">FriendlySpot Premium</CardTitle>
+                <p className="text-muted-foreground">Everything you need to connect better</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-3xl font-bold">
+                  ${billingPeriod === 'monthly' ? '12.99' : '99.99'}
+                </span>
+                <span className="text-muted-foreground">
+                  /{billingPeriod === 'monthly' ? 'month' : 'year'}
+                </span>
+              </div>
+              {billingPeriod === 'yearly' && (
+                <Badge className="bg-green-100 text-green-800">Save 35%</Badge>
+              )}
+            </div>
+          </CardHeader>
+          
+          <CardContent className="space-y-4 relative">
+            <div className="grid grid-cols-2 gap-2">
+              {fullPremiumFeatures.map((feature, index) => (
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-green-600 shrink-0" />
+                  <span>{feature}</span>
+                </div>
+              ))}
+            </div>
+            
+            <Button className="w-full gradient-primary text-white h-12 text-lg">
+              <Crown className="w-5 h-5 mr-2" />
+              Upgrade to Premium
+            </Button>
+            
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">
+                Cancel anytime • 7-day free trial • Secure payment via Stripe
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Revenue Information */}
+        <Card className="gradient-card shadow-card border-0">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Event Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <h4 className="font-semibold text-sm mb-2">How Event Revenue Works</h4>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p>• 2% platform fee on all ticket sales</p>
+                <p>• Secure payment processing via Stripe</p>
+                <p>• Automatic payouts within 2 business days</p>
+                <p>• Built-in fraud protection and refund management</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <Button variant="outline" className="w-full">
+                View Revenue Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default Premium;

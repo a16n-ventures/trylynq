@@ -169,8 +169,8 @@ const CreateEvent = () => {
           <Card className="gradient-card shadow-card border-0">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Capacity & Pricing
+                <DollarSign className="w-5 h-5" />
+                Tickets & Pricing
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -197,6 +197,21 @@ const CreateEvent = () => {
                   />
                 </div>
               </div>
+              
+              {parseFloat(eventData.price) > 0 && (
+                <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                  <h4 className="font-semibold text-sm">Ticket Sales Information</h4>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>• Platform fee: 2% of ticket sales</p>
+                    <p>• Payments processed securely via Stripe</p>
+                    <p>• Earnings transferred within 2 business days</p>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Ticket price: ${eventData.price}</span>
+                    <span className="font-semibold">You earn: ${(parseFloat(eventData.price || '0') * 0.98).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

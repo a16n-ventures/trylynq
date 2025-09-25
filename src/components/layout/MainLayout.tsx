@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, MapPin, MessageCircle, User } from 'lucide-react';
+import { Home, Users, MapPin, MessageCircle, User, Search, Rss } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -11,9 +11,9 @@ const MainLayout = () => {
 
   const tabs = [
     { id: 'home', icon: Home, label: 'Home', path: '/app' },
+    { id: 'search', icon: Search, label: 'Search', path: '/app/search' },
+    { id: 'feed', icon: Rss, label: 'Feed', path: '/app/feed' },
     { id: 'friends', icon: Users, label: 'Friends', path: '/app/friends' },
-    { id: 'map', icon: MapPin, label: 'Map', path: '/app/map' },
-    { id: 'messages', icon: MessageCircle, label: 'Messages', path: '/app/messages' },
     { id: 'profile', icon: User, label: 'Profile', path: '/app/profile' },
   ];
 

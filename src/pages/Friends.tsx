@@ -6,9 +6,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, UserPlus, Users, MapPin, MessageCircle, Phone } from 'lucide-react';
+import { useState as useVoiceCall } from 'react';
+import VoiceCall from '@/components/features/VoiceCall';
 
 const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCall, setActiveCall] = useState(null);
 
   // Mock data for different friend categories
   const nearbyFriends = [
@@ -125,7 +128,12 @@ const Friends = () => {
             <MessageCircle className="w-4 h-4" />
           </Button>
           {friend.status === 'online' && (
-            <Button size="sm" variant="outline" className="p-2">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="p-2"
+              onClick={() => setActiveCall(friend)}
+            >
               <Phone className="w-4 h-4" />
             </Button>
           )}
@@ -162,7 +170,14 @@ const Friends = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      {activeCall && (
+        <VoiceCall
+          contact={activeCall}
+          onEndCall={() => setActiveCall(null)}
+        />
+      )}
+      <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="gradient-primary text-white">
         <div className="container-mobile py-4">
@@ -269,6 +284,7 @@ const Friends = () => {
         </Tabs>
       </div>
     </div>
+    </>
   );
 };
 

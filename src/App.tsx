@@ -10,6 +10,9 @@ import Messages from "./pages/Messages";
 import Friends from "./pages/Friends";
 import Profile from "./pages/Profile";
 import CreateEvent from "./pages/CreateEvent";
+import SocialFeed from "./pages/SocialFeed";
+import Premium from "./pages/Premium";
+import SearchAndFilter from "./components/features/SearchAndFilter";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -29,8 +32,11 @@ const App = () => (
             <Route path="messages" element={<Messages />} />
             <Route path="friends" element={<Friends />} />
             <Route path="profile" element={<Profile />} />
+            <Route path="feed" element={<SocialFeed />} />
+            <Route path="search" element={<SearchAndFilter />} />
           </Route>
           <Route path="/create-event" element={<CreateEvent />} />
+          <Route path="/premium" element={<Premium />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
