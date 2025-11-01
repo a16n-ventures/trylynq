@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Card, CardContent } from '@/components/ui/card';
-import { Mail, Phone, Eye, EyeOff, Chrome, Facebook } from 'lucide-react';
+import { Mail, Eye, EyeOff, Chrome, Facebook } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface AuthModalProps {
   open: boolean;
@@ -17,31 +18,84 @@ interface AuthModalProps {
 
 const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
-    phone: '',
     password: '',
     confirmPassword: ''
   });
   const { toast } = useToast();
+  const { signUp, signIn, signInWithGoogle } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Show demo message since we don't have Supabase yet
-    toast({
-      title: "Demo Mode",
-      description: "Connect to Supabase to enable authentication. This is a beautiful UI preview!",
-      duration: 3000
-    });
+    if (!formData.email || !formData.password) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (mode === 'signup' && formData.password !== formData.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = mode === 'signup' 
+        ? await signUp(formData.email, formData.password)
+        : await signIn(formData.email, formData.password);
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        if (mode === 'signup') {
+          toast({
+            title: "Success!",
+            description: "Account created! Please check your email to verify.",
+          });
+        } else {
+          toast({
+            title: "Success!",
+            description: "Signed in successfully",
+          });
+          onOpenChange(false);
+          navigate('/app');
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSocialAuth = (provider: string) => {
-    toast({
-      title: "Demo Mode", 
-      description: `${provider} authentication will be available once Supabase is connected.`,
-      duration: 3000
-    });
+  const handleSocialAuth = async (provider: string) => {
+    setLoading(true);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,17 +114,10 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
               variant="outline" 
               className="w-full h-12 transition-smooth hover:shadow-card"
               onClick={() => handleSocialAuth('Google')}
+              disabled={loading}
             >
               <Chrome className="w-5 h-5 mr-3" />
               Continue with Google
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full h-12 transition-smooth hover:shadow-card"
-              onClick={() => handleSocialAuth('Facebook')}
-            >
-              <Facebook className="w-5 h-5 mr-3" />
-              Continue with Facebook
             </Button>
           </div>
 
@@ -139,8 +186,9 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
             <Button 
               type="submit" 
               className="w-full h-12 gradient-primary text-white shadow-primary transition-smooth hover:shadow-glow"
+              disabled={loading}
             >
-              {mode === 'login' ? 'Sign In' : 'Create Account'}
+              {loading ? 'Processing...' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </Button>
           </form>
 
