@@ -54,14 +54,14 @@ export const useGeolocation = () => {
         }
       },
       (error) => {
-        setError(error.message);
+        console.error('Geolocation error:', error);
+        setError('Unable to get your location. Please check your browser settings.');
         setLoading(false);
-        toast.error('Please enable location services to see the map');
       },
       {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 60000,
       }
     );
 

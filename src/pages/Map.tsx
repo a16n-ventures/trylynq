@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { MapboxMap } from '@/components/map/MapboxMap';
+import { LeafletMap } from '@/components/map/LeafletMap';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 
@@ -166,7 +166,7 @@ const Map = () => {
                 </div>
               </div>
             ) : (
-              <MapboxMap 
+              <LeafletMap 
                 userLocation={location}
                 friendsLocations={friendsOnMap}
               />
