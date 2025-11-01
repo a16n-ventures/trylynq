@@ -1,48 +1,101 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Users, Search, Filter } from 'lucide-react';
+import { MapPin, Users, Search, Filter, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { MapboxMap } from '@/components/map/MapboxMap';
+import { ContactImportModal } from '@/components/map/ContactImportModal';
+import { toast } from 'sonner';
 
 const Map = () => {
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [friendsLocations, setFriendsLocations] = useState<any[]>([]);
+  const [showContactImport, setShowContactImport] = useState(false);
+  const { user } = useAuth();
+  const { location, error: locationError, loading: locationLoading } = useGeolocation();
 
-  // Mock data for friends on map
-  const friendsOnMap = [
-    {
-      id: 1,
-      name: 'Alex Johnson',
-      avatar: '',
-      location: 'Downtown Campus',
-      coordinates: { lat: 40.7128, lng: -74.0060 },
-      status: 'online',
-      lastSeen: 'Active now',
-      distance: '0.5 miles'
-    },
-    {
-      id: 2,
-      name: 'Sarah Chen',
-      avatar: '',
-      location: 'University Library',
-      coordinates: { lat: 40.7580, lng: -73.9855 },
-      status: 'away',
-      lastSeen: '2 hours ago',
-      distance: '1.2 miles'
-    },
-    {
-      id: 3,
-      name: 'Mike Rodriguez',
-      avatar: '',
-      location: 'Coffee District',
-      coordinates: { lat: 40.7505, lng: -73.9934 },
-      status: 'online',
-      lastSeen: 'Active now',
-      distance: '0.8 miles'
-    }
-  ];
+  // Fetch friends' locations
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchFriendsLocations = async () => {
+      try {
+        // Get accepted friends
+        const { data: friendships, error: friendshipsError } = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+          .eq('status', 'accepted');
+
+        if (friendshipsError) throw friendshipsError;
+
+        const friendIds = friendships?.map(f => 
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
+        ) || [];
+
+        if (friendIds.length === 0) {
+          setFriendsLocations([]);
+          return;
+        }
+
+        // Get friends' locations
+        const { data: locations, error: locationsError } = await supabase
+          .from('user_locations')
+          .select(`
+            user_id,
+            latitude,
+            longitude,
+            profiles (display_name, avatar_url)
+          `)
+          .in('user_id', friendIds)
+          .eq('is_sharing_location', true);
+
+        if (locationsError) throw locationsError;
+
+        setFriendsLocations(locations || []);
+      } catch (err) {
+        console.error('Error fetching friends locations:', err);
+        toast.error('Failed to load friends locations');
+      }
+    };
+
+    fetchFriendsLocations();
+
+    // Subscribe to location updates
+    const channel = supabase
+      .channel('location-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'user_locations'
+      }, () => {
+        fetchFriendsLocations();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const friendsOnMap = friendsLocations.map(loc => ({
+    id: loc.user_id,
+    name: loc.profiles?.display_name || 'Friend',
+    avatar: loc.profiles?.avatar_url || '',
+    location: 'On the map',
+    coordinates: { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) },
+    status: 'online',
+    lastSeen: 'Active now',
+    distance: '0 miles',
+    latitude: parseFloat(loc.latitude),
+    longitude: parseFloat(loc.longitude)
+  }));
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -63,6 +116,14 @@ const Map = () => {
           <div className="flex items-center justify-between mb-4">
             <h1 className="heading-lg text-white">Friend Map</h1>
             <div className="flex items-center gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white hover:bg-white/20 p-2"
+                onClick={() => setShowContactImport(true)}
+              >
+                <UserPlus className="w-5 h-5" />
+              </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
                 <Filter className="w-5 h-5" />
               </Button>
@@ -86,30 +147,30 @@ const Map = () => {
       </div>
 
       <div className="container-mobile py-6 space-y-6">
-        {/* Map Placeholder */}
-        <Card className="gradient-card shadow-card border-0 h-80">
-          <CardContent className="p-0 relative h-full">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <MapPin className="w-12 h-12 mx-auto mb-4 text-primary" />
-                <p className="text-sm text-muted-foreground">Interactive map will be here</p>
-                <p className="text-xs text-muted-foreground mt-1">Showing {friendsOnMap.length} friends nearby</p>
-              </div>
-            </div>
-            
-            {/* Mock friend pins overlay */}
-            <div className="absolute top-4 right-4 space-y-2">
-              {friendsOnMap.slice(0, 2).map((friend, index) => (
-                <div 
-                  key={friend.id}
-                  className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-sm cursor-pointer"
-                  onClick={() => setSelectedFriend(friend)}
-                >
-                  <div className="w-2 h-2 bg-primary rounded-full" />
-                  <span className="text-xs font-medium">{friend.name}</span>
+        {/* Real Map */}
+        <Card className="gradient-card shadow-card border-0">
+          <CardContent className="p-4">
+            {locationLoading ? (
+              <div className="h-80 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-4"></div>
+                  <p className="text-sm text-muted-foreground">Getting your location...</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : locationError ? (
+              <div className="h-80 flex items-center justify-center">
+                <div className="text-center">
+                  <MapPin className="w-12 h-12 mx-auto mb-4 text-destructive" />
+                  <p className="text-sm text-muted-foreground mb-2">{locationError}</p>
+                  <p className="text-xs text-muted-foreground">Please enable location services</p>
+                </div>
+              </div>
+            ) : (
+              <MapboxMap 
+                userLocation={location}
+                friendsLocations={friendsOnMap}
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -192,6 +253,12 @@ const Map = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Contact Import Modal */}
+        <ContactImportModal 
+          open={showContactImport}
+          onOpenChange={setShowContactImport}
+        />
       </div>
     </div>
   );

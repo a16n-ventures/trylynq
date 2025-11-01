@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      contacts: {
+        Row: {
+          contact_email: string | null
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          id: string
+          is_app_user: boolean | null
+          matched_user_id: string | null
+          user_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name: string
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_app_user?: boolean | null
+          matched_user_id?: string | null
+          user_id: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          is_app_user?: boolean | null
+          matched_user_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       event_attendees: {
         Row: {
           created_at: string
@@ -167,7 +200,10 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          latitude: number | null
           location: string | null
+          location_updated_at: string | null
+          longitude: number | null
           updated_at: string
           user_id: string
         }
@@ -177,7 +213,10 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          latitude?: number | null
           location?: string | null
+          location_updated_at?: string | null
+          longitude?: number | null
           updated_at?: string
           user_id: string
         }
@@ -187,7 +226,10 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          latitude?: number | null
           location?: string | null
+          location_updated_at?: string | null
+          longitude?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -233,6 +275,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_locations: {
+        Row: {
+          accuracy: number | null
+          created_at: string
+          id: string
+          is_sharing_location: boolean | null
+          latitude: number
+          longitude: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          is_sharing_location?: boolean | null
+          latitude: number
+          longitude: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          is_sharing_location?: boolean | null
+          latitude?: number
+          longitude?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
