@@ -103,7 +103,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
       <DialogContent className="sm:max-w-md gradient-card border-0 shadow-primary">
         <DialogHeader className="text-center">
           <DialogTitle className="heading-lg gradient-primary bg-clip-text text-transparent">
-            {mode === 'login' ? 'Welcome Back!' : 'Join FriendlySpot'}
+            {mode === 'login' ? 'Welcome Back!' : 'Join Lynq'}
           </DialogTitle>
         </DialogHeader>
 
