@@ -66,11 +66,11 @@ const Index = () => {
         
         {/* Hero Image */}
         <div className="absolute inset-0 z-0">
-          <img 
+          {/* <img 
             src={heroImage} 
             alt="Lynq - Connect with nearby friends" 
             className="w-full h-full object-cover opacity-20"
-          />
+          /> */}
         </div>
 
         {/* Content */}
