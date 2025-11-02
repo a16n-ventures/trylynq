@@ -68,7 +68,7 @@ const Index = () => {
         <div className="absolute inset-0 z-0">
           <img 
             src={heroImage} 
-            alt="FriendlySpot - Connect with nearby friends" 
+            alt="Lynq - Connect with nearby friends" 
             className="w-full h-full object-cover opacity-20"
           />
         </div>
@@ -78,7 +78,7 @@ const Index = () => {
           <div className="space-y-8">
             <div className="space-y-4">
               <h1 className="heading-display text-white">
-                FriendlySpot
+                Lynq
               </h1>
               <p className="text-xl opacity-90 max-w-2xl mx-auto leading-relaxed">
                 Never lose touch with friends again. Discover who's nearby, reconnect instantly, and plan amazing hangouts.
@@ -126,7 +126,7 @@ const Index = () => {
       <section className="py-20 bg-background">
         <div className="container-tablet">
           <div className="text-center mb-16">
-            <h2 className="heading-xl mb-4">Why FriendlySpot?</h2>
+            <h2 className="heading-xl mb-4">Why Lynq?</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Reconnect with your existing friends based on location. No strangers, no dating - just real connections with people you already know.
             </p>

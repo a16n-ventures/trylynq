@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Calendar, MapPin, Users, Clock, DollarSign, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const CreateEvent = () => {
   const navigate = useNavigate();
@@ -34,12 +36,40 @@ const CreateEvent = () => {
     'Other'
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In real app, submit to API
-    console.log('Creating event:', eventData);
-    // Navigate back to dashboard
-    navigate('/app');
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast.error('You must be logged in to create an event');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('events')
+        .insert({
+          title: eventData.title,
+          description: eventData.description,
+          category: eventData.category,
+          location: eventData.location,
+          start_date: `${eventData.date} ${eventData.time}`,
+          end_date: null,
+          max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
+          ticket_price: eventData.price ? parseFloat(eventData.price) : 0,
+          is_public: !eventData.isPrivate,
+          creator_id: user.id
+        });
+
+      if (error) throw error;
+
+      toast.success('Event created successfully!');
+      navigate('/app');
+    } catch (error: any) {
+      console.error('Error creating event:', error);
+      toast.error('Failed to create event: ' + error.message);
+    }
   };
 
   return (
@@ -203,7 +233,7 @@ const CreateEvent = () => {
                   <h4 className="font-semibold text-sm">Ticket Sales Information</h4>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>• Platform fee: 2% of ticket sales</p>
-                    <p>• Payments processed securely via Stripe</p>
+                    <p>• Payments processed securely via Flutterwave</p>
                     <p>• Earnings transferred within 2 business days</p>
                   </div>
                   <div className="flex items-center justify-between text-sm">

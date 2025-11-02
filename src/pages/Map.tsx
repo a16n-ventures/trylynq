@@ -11,6 +11,7 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { LeafletMap } from '@/components/map/LeafletMap';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 const Map = () => {
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
@@ -19,6 +20,7 @@ const Map = () => {
   const [showContactImport, setShowContactImport] = useState(false);
   const { user } = useAuth();
   const { location, error: locationError, loading: locationLoading } = useGeolocation();
+  const navigate = useNavigate();
 
   // Fetch friends' locations
   useEffect(() => {
@@ -211,7 +213,11 @@ const Map = () => {
                     </div>
                   </div>
                   
-                  <Button size="sm" variant="outline">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => navigate(`/app/messages?user=${friend.id}`)}
+                  >
                     View
                   </Button>
                 </div>
@@ -243,10 +249,20 @@ const Map = () => {
               </div>
               
               <div className="grid grid-cols-2 gap-3">
-                <Button className="gradient-primary text-white">
+                <Button 
+                  className="gradient-primary text-white"
+                  onClick={() => navigate(`/app/messages?user=${selectedFriend.id}`)}
+                >
                   Send Message
                 </Button>
-                <Button variant="outline">
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    if (selectedFriend.latitude && selectedFriend.longitude) {
+                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedFriend.latitude},${selectedFriend.longitude}`, '_blank');
+                    }
+                  }}
+                >
                   Get Directions
                 </Button>
               </div>

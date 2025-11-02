@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, MapPin, MessageCircle, User, Search, Rss } from 'lucide-react';
+import { Home, Users, MapPin, MessageCircle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { FloatingActionButton } from '@/components/ui/floating-action-button';
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -11,8 +12,8 @@ const MainLayout = () => {
 
   const tabs = [
     { id: 'home', icon: Home, label: 'Home', path: '/app' },
-    { id: 'search', icon: Search, label: 'Search', path: '/app/search' },
-    { id: 'feed', icon: Rss, label: 'Feed', path: '/app/feed' },
+    { id: 'map', icon: MapPin, label: 'Map', path: '/app/map' },
+    { id: 'messages', icon: MessageCircle, label: 'Messages', path: '/app/messages' },
     { id: 'friends', icon: Users, label: 'Friends', path: '/app/friends' },
     { id: 'profile', icon: User, label: 'Profile', path: '/app/profile' },
   ];
@@ -30,6 +31,12 @@ const MainLayout = () => {
       <main className="flex-1 pb-20">
         <Outlet />
       </main>
+
+      {/* Floating Action Button for Create Event */}
+      <FloatingActionButton 
+        onClick={() => navigate('/create-event')}
+        label="Create Event"
+      />
 
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">

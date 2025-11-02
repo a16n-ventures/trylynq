@@ -100,7 +100,7 @@ const Premium = () => {
             </Button>
             <div>
               <h1 className="heading-lg text-white">Premium Features</h1>
-              <p className="opacity-90">Unlock the full potential of FriendlySpot</p>
+              <p className="opacity-90">Unlock the full potential of Lynq</p>
             </div>
           </div>
         </div>
@@ -144,7 +144,7 @@ const Premium = () => {
                 <Crown className="w-6 h-6" />
               </div>
               <div>
-                <CardTitle className="heading-lg">FriendlySpot Premium</CardTitle>
+                <CardTitle className="heading-lg">Lynq Premium</CardTitle>
                 <p className="text-muted-foreground">Everything you need to connect better</p>
               </div>
             </div>
@@ -181,7 +181,7 @@ const Premium = () => {
             
             <div className="text-center">
               <p className="text-xs text-muted-foreground">
-                Cancel anytime • 7-day free trial • Secure payment via Stripe
+                Cancel anytime • 7-day free trial • Secure payment via Flutterwave
               </p>
             </div>
           </CardContent>
@@ -200,7 +200,7 @@ const Premium = () => {
               <h4 className="font-semibold text-sm mb-2">How Event Revenue Works</h4>
               <div className="text-sm text-muted-foreground space-y-1">
                 <p>• 2% platform fee on all ticket sales</p>
-                <p>• Secure payment processing via Stripe</p>
+                <p>• Secure payment processing via Flutterwave</p>
                 <p>• Automatic payouts within 2 business days</p>
                 <p>• Built-in fraud protection and refund management</p>
               </div>
