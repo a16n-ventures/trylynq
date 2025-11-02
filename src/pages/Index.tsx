@@ -143,18 +143,7 @@ const Index = () => {
             <p className="text-xl opacity-90 max-w-2xl mx-auto">
               Join thousands of people who are rediscovering friendships and creating new memories with people nearby.
             </p>
-            <Button 
-              size="lg" 
-              variant="secondary"
-              onClick={() => handleAuth('signup')}
-              className="min-w-[200px] bg-white text-primary hover:bg-white/90 transition-smooth shadow-glow"
-            >
-              Start Connecting Now
-            </Button>
-          </div>
-        </div>
-
-             <div className="flex items-center justify-center gap-8 text-sm opacity-75">
+            <div className="flex items-center justify-center gap-8 text-white text-sm opacity-75">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4" />
                 <span>Privacy Protected</span>
@@ -168,7 +157,16 @@ const Index = () => {
                 <span>100% Free</span>
               </div>
             </div>
-        
+            <Button 
+              size="lg" 
+              variant="secondary"
+              onClick={() => handleAuth('signup')}
+              className="min-w-[200px] bg-white text-primary hover:bg-white/90 transition-smooth shadow-glow"
+            >
+              Start Connecting Now
+            </Button>
+          </div>
+        </div>
       </section>
 
       {/* Auth Modal */}
