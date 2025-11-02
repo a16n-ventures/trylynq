@@ -166,7 +166,13 @@ const SocialFeed = () => {
 
   return (
     <div className="min-h-screen bg-background">
-
+      {/* Header */}
+      <div className="gradient-primary text-white">
+        <div className="container-mobile py-4">
+          <h1 className="heading-lg text-white">Social Feed</h1>
+          <p className="opacity-90">What's happening around you</p>
+        </div>
+      </div>
       <div className="container-mobile py-6 space-y-6">
         {/* Create Post */}
         <Card className="gradient-card shadow-card border-0">
