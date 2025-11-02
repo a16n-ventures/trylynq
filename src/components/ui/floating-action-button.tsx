@@ -13,7 +13,7 @@ export const FloatingActionButton = ({ onClick, className, label = 'Create Event
     <Button
       onClick={onClick}
       className={cn(
-        "fixed bottom-20 right-4 mb-4 sm:right-6 z-40 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-glow gradient-primary text-white hover:shadow-primary transition-smooth",
+        "fixed bottom-20 right-4 mb-10 sm:right-6 z-40 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-glow gradient-primary text-white hover:shadow-primary transition-smooth",
         "md:h-auto md:w-auto md:px-6 md:rounded-full",
         className
       )}
