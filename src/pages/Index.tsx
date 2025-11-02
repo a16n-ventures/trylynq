@@ -104,20 +104,6 @@ const Index = () => {
               </Button>
             </div>
 
-            <div className="flex items-center justify-center gap-8 text-sm opacity-75">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                <span>Privacy Protected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span>Friends Only</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                <span>100% Free</span>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -167,6 +153,22 @@ const Index = () => {
             </Button>
           </div>
         </div>
+
+             <div className="flex items-center justify-center gap-8 text-sm opacity-75">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                <span>Privacy Protected</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                <span>Friends Only</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                <span>100% Free</span>
+              </div>
+            </div>
+        
       </section>
 
       {/* Auth Modal */}
