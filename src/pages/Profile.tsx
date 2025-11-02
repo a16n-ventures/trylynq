@@ -6,12 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Settings, Edit3, MapPin, Users, Camera, Bell, Shield, LogOut } from 'lucide-react';
+import { Settings, Edit3, MapPin, Users, Camera, Bell, Shield, LogOut, Crown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [locationSharing, setLocationSharing] = useState(true);
   const [notifications, setNotifications] = useState(true);
+  const navigate = useNavigate();
 
   // Mock user data
   const user = {
@@ -157,6 +159,15 @@ const Profile = () => {
         {/* Account Actions */}
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-4 space-y-3">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gradient-primary text-white border-0 hover:opacity-90"
+              onClick={() => navigate('/premium')}
+            >
+              <Crown className="w-4 h-4 mr-3" />
+              Upgrade to Premium
+            </Button>
+
             <Button variant="outline" className="w-full justify-start">
               <Settings className="w-4 h-4 mr-3" />
               Account Settings

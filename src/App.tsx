@@ -34,12 +34,12 @@ const App = () => (
                 <MainLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<Dashboard />} />
+              <Route index element={<SocialFeed />} />
+              <Route path="feed" element={<SocialFeed />} />
               <Route path="map" element={<Map />} />
               <Route path="messages" element={<Messages />} />
               <Route path="friends" element={<Friends />} />
               <Route path="profile" element={<Profile />} />
-              <Route path="feed" element={<SocialFeed />} />
               <Route path="search" element={<SearchAndFilter />} />
             </Route>
             <Route path="/create-event" element={

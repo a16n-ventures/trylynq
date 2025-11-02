@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, MapPin, MessageCircle, User } from 'lucide-react';
+import { Home, Users, MapPin, User, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { FloatingActionButton } from '@/components/ui/floating-action-button';
@@ -11,9 +11,9 @@ const MainLayout = () => {
   const [activeTab, setActiveTab] = useState('home');
 
   const tabs = [
-    { id: 'home', icon: Home, label: 'Home', path: '/app' },
+    { id: 'feed', icon: Home, label: 'Feed', path: '/app/feed' },
+    { id: 'search', icon: Search, label: 'Search', path: '/app/search' },
     { id: 'map', icon: MapPin, label: 'Map', path: '/app/map' },
-    { id: 'messages', icon: MessageCircle, label: 'Messages', path: '/app/messages' },
     { id: 'friends', icon: Users, label: 'Friends', path: '/app/friends' },
     { id: 'profile', icon: User, label: 'Profile', path: '/app/profile' },
   ];

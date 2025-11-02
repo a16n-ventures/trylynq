@@ -60,8 +60,8 @@ export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) 
     <MapContainer 
       center={center} 
       zoom={13} 
-      className="h-80 rounded-lg"
-      style={{ height: '320px', width: '100%' }}
+      className="h-80 rounded-lg z-0"
+      style={{ height: '320px', width: '100%', zIndex: 0 }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
