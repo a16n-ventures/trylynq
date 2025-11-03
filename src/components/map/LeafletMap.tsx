@@ -32,6 +32,18 @@ function MapCenter({ center }: { center: [number, number] }) {
   return null;
 }
 
+// Ensure map resizes correctly when container visibility/layout changes
+function MapResizer() {
+  const map = useMap();
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+    return () => clearTimeout(timeout);
+  }, [map]);
+  return null;
+}
+
 export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) => {
   const center: [number, number] = userLocation 
     ? [userLocation.latitude, userLocation.longitude]
@@ -67,6 +79,7 @@ export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) 
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <MapResizer />
       
       {userLocation && <MapCenter center={[userLocation.latitude, userLocation.longitude]} />}
       

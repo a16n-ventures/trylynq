@@ -14,7 +14,10 @@ export const useContactImport = () => {
   const { user } = useAuth();
 
   const importContacts = async (contacts: Contact[]) => {
-    if (!user) return;
+    if (!user) { 
+      toast.error('Please sign in to import contacts');
+      return; 
+    }
 
     setImporting(true);
     try {
@@ -38,7 +41,8 @@ export const useContactImport = () => {
       await matchContacts();
     } catch (err: any) {
       console.error('Error importing contacts:', err);
-      toast.error('Failed to import contacts');
+      toast.error(`Failed to import contacts: ${err?.message || 'Unknown error'}`);
+    }
     } finally {
       setImporting(false);
     }

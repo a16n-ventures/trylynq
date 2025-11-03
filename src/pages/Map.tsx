@@ -151,28 +151,22 @@ const Map = () => {
       <div className="container-mobile py-6 space-y-6">
         {/* Real Map */}
         <Card className="gradient-card shadow-card border-0">
-          <CardContent className="p-4">
-            {locationLoading ? (
-              <div className="h-80 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent mb-4"></div>
-                  <p className="text-sm text-muted-foreground">Getting your location...</p>
-                </div>
+          <CardContent className="p-4 space-y-3">
+            {locationLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-primary border-r-transparent"></div>
+                Getting your location...
               </div>
-            ) : locationError ? (
-              <div className="h-80 flex items-center justify-center">
-                <div className="text-center">
-                  <MapPin className="w-12 h-12 mx-auto mb-4 text-destructive" />
-                  <p className="text-sm text-muted-foreground mb-2">{locationError}</p>
-                  <p className="text-xs text-muted-foreground">Please enable location services</p>
-                </div>
-              </div>
-            ) : (
-              <LeafletMap 
-                userLocation={location}
-                friendsLocations={friendsOnMap}
-              />
             )}
+            {locationError && (
+              <div className="text-sm text-muted-foreground">
+                {locationError} — showing map with default location.
+              </div>
+            )}
+            <LeafletMap 
+              userLocation={location}
+              friendsLocations={friendsOnMap}
+            />
           </CardContent>
         </Card>
 
