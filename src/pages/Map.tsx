@@ -284,7 +284,7 @@ const Map = () => {
               loading={locationLoading}
               error={locationError}
             /> 
-            }}
+            )}
           </CardContent>
         </Card>
 
