@@ -48,9 +48,66 @@ export const useContactImport = () => {
   };
 
   const matchContacts = async () => {
-    // This would typically be an edge function that matches contacts
-    // with existing users and sends friend requests
-    toast.info('Looking for friends...');
+    if (!user) return;
+
+    try {
+      // Find matching users by email or phone
+      const { data: matchedUsers, error } = await supabase
+        .from('profiles')
+        .select('user_id, email')
+        .neq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Get user's imported contacts
+      const { data: userContacts } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (!matchedUsers || !userContacts) return;
+
+      // Match contacts with users
+      const matches = userContacts
+        .map(contact => {
+          const match = matchedUsers.find(
+            u => u.email === contact.contact_email
+          );
+          return match ? { contact_id: contact.id, matched_user_id: match.user_id } : null;
+        })
+        .filter(Boolean);
+
+      if (matches.length === 0) {
+        toast.info('No friends found from your contacts');
+        return;
+      }
+
+      // Update matched contacts
+      for (const match of matches) {
+        if (match) {
+          await supabase
+            .from('contacts')
+            .update({ matched_user_id: match.matched_user_id, is_app_user: true })
+            .eq('id', match.contact_id);
+
+          // Send friend request
+          await supabase
+            .from('friendships')
+            .insert({
+              requester_id: user.id,
+              addressee_id: match.matched_user_id,
+              status: 'pending'
+            })
+            .select()
+            .single();
+        }
+      }
+
+      toast.success(`Found ${matches.length} friends! Friend requests sent.`);
+    } catch (err: any) {
+      console.error('Error matching contacts:', err);
+      toast.error('Error matching contacts');
+    }
   };
 
   const requestContactAccess = async () => {

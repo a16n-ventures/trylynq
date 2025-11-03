@@ -199,6 +199,7 @@ export type Database = {
           bio: string | null
           created_at: string
           display_name: string | null
+          email: string | null
           id: string
           latitude: number | null
           location: string | null
@@ -212,6 +213,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           display_name?: string | null
+          email?: string | null
           id?: string
           latitude?: number | null
           location?: string | null
@@ -225,6 +227,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           display_name?: string | null
+          email?: string | null
           id?: string
           latitude?: number | null
           location?: string | null
