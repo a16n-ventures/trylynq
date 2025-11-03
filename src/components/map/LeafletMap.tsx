@@ -1,14 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// Fix marker icons in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
 interface LeafletMapProps {
@@ -24,26 +26,17 @@ interface LeafletMapProps {
 function MapCenter({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 13);
+    map.setView(center, 13, { animate: true });
   }, [center, map]);
   return null;
 }
 
-function MapResizer() {
-  const map = useMap();
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      map.invalidateSize();
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [map]);
-  return null;
-}
-
 export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) => {
+  const mapRef = useRef<L.Map | null>(null);
+
   const center: [number, number] = userLocation
     ? [userLocation.latitude, userLocation.longitude]
-    : [40.7128, -74.006];
+    : [6.5244, 3.3792]; // default Lagos coords
 
   const userIcon = new L.Icon({
     iconUrl:
@@ -52,8 +45,6 @@ export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) 
       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
   });
 
   const friendIcon = new L.Icon({
@@ -63,42 +54,59 @@ export const LeafletMap = ({ userLocation, friendsLocations }: LeafletMapProps) 
       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
   });
+
+  // ensure map resizes properly on mobile
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handleResize = () => map.invalidateSize();
+    const timeout = setTimeout(handleResize, 800);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   const validFriends = friendsLocations.filter(
     (f) => typeof f.latitude === 'number' && typeof f.longitude === 'number'
   );
 
   return (
-    <MapContainer
-      center={center}
-      zoom={13}
-      className="h-80 rounded-lg z-0"
-      style={{ height: '320px', width: '100%', zIndex: 0 }}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <MapResizer />
-      {userLocation && <MapCenter center={[userLocation.latitude, userLocation.longitude]} />}
-      {userLocation && (
-        <Marker position={[userLocation.latitude, userLocation.longitude]} icon={userIcon}>
-          <Popup><div className="font-semibold">You are here</div></Popup>
-        </Marker>
-      )}
-      {validFriends.map((friend) => (
-        <Marker
-          key={friend.id}
-          position={[friend.latitude!, friend.longitude!]}
-          icon={friendIcon}
-        >
-          <Popup><div className="font-semibold">{friend.name}</div></Popup>
-        </Marker>
-      ))}
-    </MapContainer>
+    <div style={{ height: '400px', width: '100%', position: 'relative', zIndex: 0 }}>
+      <MapContainer
+        center={center}
+        zoom={13}
+        style={{
+          height: '100%',
+          width: '100%',
+          zIndex: 0,
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+        whenCreated={(mapInstance) => {
+          mapRef.current = mapInstance;
+          // Delay initial invalidate to prevent blank tile issue
+          setTimeout(() => mapInstance.invalidateSize(), 600);
+        }}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {userLocation && <MapCenter center={[userLocation.latitude, userLocation.longitude]} />}
+        {userLocation && (
+          <Marker position={[userLocation.latitude, userLocation.longitude]} icon={userIcon}>
+            <Popup>You are here</Popup>
+          </Marker>
+        )}
+        {validFriends.map((f) => (
+          <Marker key={f.id} position={[f.latitude!, f.longitude!]} icon={friendIcon}>
+            <Popup>{f.name}</Popup>
+          </Marker>
+        ))}
+      </MapContainer>
+    </div>
   );
 };
-            
