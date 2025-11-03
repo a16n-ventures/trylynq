@@ -82,11 +82,14 @@ export const LeafletMap = ({
     (f) => typeof f.latitude === 'number' && typeof f.longitude === 'number'
   );
 
+  console.log('LeafletMap render check');
+
   return (
     <div
       style={{
         height: '400px',
         width: '100%',
+        background: 'red', // temporary 
         position: 'relative',
         borderRadius: 12,
         overflow: 'hidden',
