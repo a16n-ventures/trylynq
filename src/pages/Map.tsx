@@ -279,9 +279,11 @@ const Map = () => {
             {locationError && <div className="text-sm text-muted-foreground">{locationError}</div>}
             {(location || friendsWithDistance.length > 0) && (
             <LeafletMap 
-              userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
+              userLocation={location}
               friendsLocations={friendsWithDistance}
-            /> )}
+              loading={locationLoading}
+              error={locationError}
+            />
           </CardContent>
         </Card>
 
