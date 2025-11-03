@@ -42,7 +42,6 @@ export const useContactImport = () => {
     } catch (err: any) {
       console.error('Error importing contacts:', err);
       toast.error(`Failed to import contacts: ${err?.message || 'Unknown error'}`);
-    }
     } finally {
       setImporting(false);
     }
