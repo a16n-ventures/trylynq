@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,93 +13,219 @@ import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
+type UserProfile = {
+  display_name?: string | null;
+  avatar_url?: string | null;
+};
+
+type UserLocationRow = {
+  user_id: string;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  is_sharing_location?: boolean | null;
+  profiles?: UserProfile | null;
+};
+
+type FriendOnMap = {
+  id: string;
+  name: string;
+  avatar?: string;
+  locationLabel: string;
+  coordinates?: { lat: number; lng: number } | null;
+  status: 'online' | 'away' | 'offline';
+  lastSeen?: string;
+  distanceKm?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+const toNumber = (v: string | number | null | undefined): number | null => {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * haversine formula - returns distance in kilometers
+ */
+const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 const Map = () => {
-  const [selectedFriend, setSelectedFriend] = useState<any>(null);
+  const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [friendsLocations, setFriendsLocations] = useState<any[]>([]);
+  const [friendsLocations, setFriendsLocations] = useState<UserLocationRow[]>([]);
+  const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [showContactImport, setShowContactImport] = useState(false);
   const { user } = useAuth();
   const { location, error: locationError, loading: locationLoading } = useGeolocation();
   const navigate = useNavigate();
 
-  // Fetch friends' locations
+  const fetchFriendsLocations = useCallback(async (signal?: AbortSignal) => {
+    if (!user) return;
+    try {
+      const { data: friendships, error: friendshipsError } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+
+      if (friendshipsError) throw friendshipsError;
+
+      const friendIds = (friendships || []).map((f: any) =>
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      );
+
+      if (!friendIds.length) {
+        setFriendsLocations([]);
+        return;
+      }
+
+      const { data: locations, error: locationsError } = await supabase
+        .from('user_locations')
+        .select(`
+          user_id,
+          latitude,
+          longitude,
+          is_sharing_location,
+          profiles (display_name, avatar_url)
+        `)
+        .in('user_id', friendIds)
+        .eq('is_sharing_location', true);
+
+      if (locationsError) throw locationsError;
+
+      if (!signal?.aborted) setFriendsLocations(locations || []);
+    } catch (err) {
+      console.error('fetchFriendsLocations error', err);
+      toast.error('Failed to load friends locations');
+    }
+  }, [user]);
+
+  // load + realtime updates for locations
   useEffect(() => {
     if (!user) return;
+    let isMounted = true;
+    const controller = new AbortController();
 
-    const fetchFriendsLocations = async () => {
-      try {
-        // Get accepted friends
-        const { data: friendships, error: friendshipsError } = await supabase
-          .from('friendships')
-          .select('requester_id, addressee_id')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-          .eq('status', 'accepted');
+    fetchFriendsLocations(controller.signal);
 
-        if (friendshipsError) throw friendshipsError;
+    let channel: any = null;
+    (async () => {
+      const { data: friendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+      const friendIds = (friendships || []).map((f: any) =>
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      );
 
-        const friendIds = friendships?.map(f => 
-          f.requester_id === user.id ? f.addressee_id : f.requester_id
-        ) || [];
-
-        if (friendIds.length === 0) {
-          setFriendsLocations([]);
-          return;
-        }
-
-        // Get friends' locations
-        const { data: locations, error: locationsError } = await supabase
-          .from('user_locations')
-          .select(`
-            user_id,
-            latitude,
-            longitude,
-            profiles (display_name, avatar_url)
-          `)
-          .in('user_id', friendIds)
-          .eq('is_sharing_location', true);
-
-        if (locationsError) throw locationsError;
-
-        setFriendsLocations(locations || []);
-      } catch (err) {
-        console.error('Error fetching friends locations:', err);
-        toast.error('Failed to load friends locations');
-      }
-    };
-
-    fetchFriendsLocations();
-
-    // Subscribe to location updates
-    const channel = supabase
-      .channel('location-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'user_locations'
-      }, () => {
-        fetchFriendsLocations();
-      })
-      .subscribe();
+      channel = supabase
+        .channel('public:user_locations')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, (payload: any) => {
+          const rec = payload?.new || payload?.old;
+          const userId = rec?.user_id;
+          if (userId && friendIds.includes(userId) && isMounted) fetchFriendsLocations();
+        })
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      controller.abort();
+      if (channel?.unsubscribe) channel.unsubscribe();
+      // @ts-ignore
+      if (supabase.removeChannel) supabase.removeChannel(channel);
+    };
+  }, [user, fetchFriendsLocations]);
+
+  // realtime presence tracking (Supabase Realtime presence)
+  useEffect(() => {
+    if (!user) return;
+    const presenceChannel = supabase.channel('online-users', {
+      config: { presence: { key: user.id } },
+    });
+
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        const onlineIds = Object.keys(state);
+        setFriendsPresence((prev) => {
+          const updated: Record<string, 'online' | 'offline'> = {};
+          for (const id of onlineIds) updated[id] = 'online';
+          return updated;
+        });
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({ user_id: user.id, online: true });
+        }
+      });
+
+    return () => {
+      presenceChannel.unsubscribe();
     };
   }, [user]);
 
-  const friendsOnMap = friendsLocations.map(loc => ({
-    id: loc.user_id,
-    name: loc.profiles?.display_name || 'Friend',
-    avatar: loc.profiles?.avatar_url || '',
-    location: 'On the map',
-    coordinates: { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) },
-    status: 'online',
-    lastSeen: 'Active now',
-    distance: '0 miles',
-    latitude: parseFloat(loc.latitude),
-    longitude: parseFloat(loc.longitude)
-  }));
+  // merge presence + location data
+  const friendsMapped: FriendOnMap[] = useMemo(() => {
+    return friendsLocations.map((loc) => {
+      const lat = toNumber(loc.latitude);
+      const lng = toNumber(loc.longitude);
+      const name = loc.profiles?.display_name || 'Friend';
+      const avatar = loc.profiles?.avatar_url || undefined;
+      const coords = lat !== null && lng !== null ? { lat, lng } : null;
+      const online = friendsPresence[loc.user_id] === 'online';
 
-  const getStatusBadge = (status: string) => {
+      return {
+        id: String(loc.user_id),
+        name,
+        avatar,
+        locationLabel: coords ? 'On the map' : 'Location unavailable',
+        coordinates: coords,
+        status: online ? 'online' : 'offline',
+        lastSeen: online ? 'Active now' : 'Offline',
+        distanceKm: null,
+        latitude: lat,
+        longitude: lng,
+      };
+    });
+  }, [friendsLocations, friendsPresence]);
+
+  // compute distance from user location
+  const friendsWithDistance = useMemo(() => {
+    if (!location?.latitude || !location?.longitude) return friendsMapped;
+    const { latitude: userLat, longitude: userLng } = location;
+    return friendsMapped.map((f) => {
+      if (f.latitude == null || f.longitude == null) return { ...f, distanceKm: null };
+      const km = distanceKm(userLat, userLng, f.latitude, f.longitude);
+      return { ...f, distanceKm: Number(km.toFixed(2)) };
+    });
+  }, [friendsMapped, location]);
+
+  // search filter
+  const filteredFriends = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return friendsWithDistance;
+    return friendsWithDistance.filter((f) => {
+      const nameMatch = f.name.toLowerCase().includes(q);
+      const locMatch = (f.locationLabel || '').toLowerCase().includes(q);
+      const distMatch = f.distanceKm ? f.distanceKm.toString().includes(q) : false;
+      return nameMatch || locMatch || distMatch;
+    });
+  }, [friendsWithDistance, searchQuery]);
+
+  const getStatusBadge = (status: FriendOnMap['status']) => {
     switch (status) {
       case 'online':
         return <Badge className="status-online text-xs">Online</Badge>;
@@ -112,18 +238,12 @@ const Map = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="gradient-primary text-white">
         <div className="container-mobile py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="heading-lg text-white">Friend Map</h1>
+            <h1 className="heading-lg text-white">Friend map</h1>
             <div className="flex items-center gap-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white/20 p-2"
-                onClick={() => setShowContactImport(true)}
-              >
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2" onClick={() => setShowContactImport(true)}>
                 <UserPlus className="w-5 h-5" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
@@ -135,7 +255,6 @@ const Map = () => {
             </div>
           </div>
 
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
             <Input
@@ -149,7 +268,6 @@ const Map = () => {
       </div>
 
       <div className="container-mobile py-6 space-y-6">
-        {/* Real Map */}
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-4 space-y-3">
             {locationLoading && (
@@ -158,44 +276,47 @@ const Map = () => {
                 Getting your location...
               </div>
             )}
-            {locationError && (
-              <div className="text-sm text-muted-foreground">
-                {locationError} — showing map with default location.
-              </div>
-            )}
-            <LeafletMap 
-              userLocation={location}
-              friendsLocations={friendsOnMap}
-            />
+            {locationError && <div className="text-sm text-muted-foreground">{locationError}</div>}
+            <LeafletMap userLocation={location} friendsLocations={friendsWithDistance} />
           </CardContent>
         </Card>
 
-        {/* Nearby Friends List */}
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="heading-lg">Nearby Friends</h3>
+              <h3 className="heading-lg">Nearby friends</h3>
               <Badge variant="secondary" className="text-xs">
-                {friendsOnMap.length} online
+                {filteredFriends.length} found
               </Badge>
             </div>
-            
+
+            {filteredFriends.length === 0 && (
+              <div className="text-sm text-muted-foreground p-3">No friends found or sharing location.</div>
+            )}
+
             <div className="space-y-3">
-              {friendsOnMap.map((friend) => (
-                <div 
-                  key={friend.id} 
+              {filteredFriends.map((friend) => (
+                <div
+                  key={friend.id}
                   className={`flex items-center gap-3 p-3 rounded-xl transition-smooth cursor-pointer ${
                     selectedFriend?.id === friend.id ? 'bg-primary/10' : 'hover:bg-muted/50'
                   }`}
                   onClick={() => setSelectedFriend(friend)}
                 >
                   <Avatar className="w-12 h-12">
-                    <AvatarImage src={friend.avatar} />
-                    <AvatarFallback className="gradient-primary text-white">
-                      {friend.name.split(' ').map(n => n[0]).join('')}
-                    </AvatarFallback>
+                    {friend.avatar ? (
+                      <AvatarImage src={friend.avatar} />
+                    ) : (
+                      <AvatarFallback className="gradient-primary text-white">
+                        {friend.name
+                          .split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    )}
                   </Avatar>
-                  
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold truncate">{friend.name}</h4>
@@ -203,14 +324,19 @@ const Map = () => {
                     </div>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <MapPin className="w-3 h-3" />
-                      <span>{friend.location} • {friend.distance}</span>
+                      <span>
+                        {friend.locationLabel}
+                        {friend.distanceKm != null ? ` • ${friend.distanceKm} km` : ''}
+                      </span>
                     </div>
                   </div>
-                  
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => navigate(`/app/messages?user=${friend.id}`)}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/app/messages?user=${friend.id}`);
+                    }}
                   >
                     View
                   </Button>
@@ -220,55 +346,61 @@ const Map = () => {
           </CardContent>
         </Card>
 
-        {/* Selected Friend Details */}
         {selectedFriend && (
           <Card className="gradient-card shadow-card border-0">
             <CardContent className="p-4">
               <div className="flex items-center gap-3 mb-4">
                 <Avatar className="w-16 h-16">
-                  <AvatarImage src={selectedFriend.avatar} />
-                  <AvatarFallback className="gradient-primary text-white text-lg">
-                    {selectedFriend.name.split(' ').map(n => n[0]).join('')}
-                  </AvatarFallback>
+                  {selectedFriend.avatar ? (
+                    <AvatarImage src={selectedFriend.avatar} />
+                  ) : (
+                    <AvatarFallback className="gradient-primary text-white text-lg">
+                      {selectedFriend.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  )}
                 </Avatar>
-                
                 <div>
                   <h3 className="heading-lg">{selectedFriend.name}</h3>
-                  <p className="text-sm text-muted-foreground">{selectedFriend.location}</p>
+                  <p className="text-sm text-muted-foreground">{selectedFriend.locationLabel}</p>
                   <div className="flex items-center gap-2 mt-1">
                     {getStatusBadge(selectedFriend.status)}
                     <span className="text-xs text-muted-foreground">{selectedFriend.lastSeen}</span>
                   </div>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-3">
-                <Button 
+                <Button
                   className="gradient-primary text-white"
                   onClick={() => navigate(`/app/messages?user=${selectedFriend.id}`)}
                 >
-                  Send Message
+                  Send message
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => {
                     if (selectedFriend.latitude && selectedFriend.longitude) {
-                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedFriend.latitude},${selectedFriend.longitude}`, '_blank');
-                    }
+                      const dest = `${selectedFriend.latitude},${selectedFriend.longitude}`;
+                      window.open(
+                        `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`,
+                        '_blank'
+                      );
+                    } else toast.error('Location unavailable for this friend');
                   }}
                 >
-                  Get Directions
+                  Get directions
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Contact Import Modal */}
-        <ContactImportModal 
-          open={showContactImport}
-          onOpenChange={setShowContactImport}
-        />
+        <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
       </div>
     </div>
   );
