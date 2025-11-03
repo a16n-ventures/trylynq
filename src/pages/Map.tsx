@@ -234,8 +234,11 @@ const Map = () => {
       default:
         return <Badge className="status-offline text-xs">Offline</Badge>;
     }
-  };
+  }; 
 
+  console.log('friendsWithDistance:', friendsWithDistance);
+  console.log('userLocation:', location);
+  
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-primary text-white">
