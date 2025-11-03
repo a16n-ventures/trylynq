@@ -20,57 +20,53 @@ export const useGeolocation = () => {
 
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by your browser');
-      toast.error('Your browser does not support location services');
+      toast.error('Geolocation not supported');
       setLoading(false);
       return;
     }
 
-    const watchId = navigator.geolocation.watchPosition(
+    // Try one-time location first
+    navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const locationData: LocationData = {
+        const loc = {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
         };
-
-        setLocation(locationData);
+        setLocation(loc);
         setError(null);
         setLoading(false);
 
         try {
-          const { error: upsertError } = await supabase
+          const { error } = await supabase
             .from('user_locations')
             .upsert({
               user_id: user.id,
-              latitude: locationData.latitude,
-              longitude: locationData.longitude,
-              accuracy: locationData.accuracy,
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              accuracy: loc.accuracy,
               is_sharing_location: true,
             })
             .onConflict('user_id');
-
-          if (upsertError) throw upsertError;
+          if (error) throw error;
         } catch (err) {
-          console.error('Error updating location:', err);
-          toast.error('Failed to update your location');
+          console.error('Location update error:', err);
         }
       },
       (err) => {
-        console.error('Geolocation error:', err);
-        setError('Unable to get your location. Please check browser settings.');
-        toast.error('Unable to access your location. Enable GPS and try again.');
+        console.warn('Geolocation error:', err);
+        setError('Unable to access your location.');
+        toast.error('Unable to access your location.');
         setLoading(false);
+        // provide fallback so map can still show
+        setLocation({ latitude: 6.5244, longitude: 3.3792, accuracy: 1000 });
       },
       {
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: 10000,
         maximumAge: 60000,
       }
     );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
   }, [user]);
 
   return { location, error, loading };
