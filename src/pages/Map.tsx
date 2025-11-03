@@ -283,7 +283,8 @@ const Map = () => {
               friendsLocations={friendsWithDistance}
               loading={locationLoading}
               error={locationError}
-            />
+            /> 
+            }}
           </CardContent>
         </Card>
 
