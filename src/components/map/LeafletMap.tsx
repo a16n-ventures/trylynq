@@ -99,9 +99,11 @@ export const LeafletMap = ({
         center={center}
         zoom={13}
         style={{ height: '100%', width: '100%', zIndex: 0 }}
-        whenCreated={(map) => {
-          mapRef.current = map;
-          setTimeout(() => map.invalidateSize(), 600);
+        ref={(map) => {
+          if (map) {
+            mapRef.current = map;
+            setTimeout(() => map.invalidateSize(), 600);
+          }
         }}
       >
         <TileLayer

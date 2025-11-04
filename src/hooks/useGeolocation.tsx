@@ -46,8 +46,7 @@ export const useGeolocation = () => {
               longitude: loc.longitude,
               accuracy: loc.accuracy,
               is_sharing_location: true,
-            })
-            .onConflict('user_id');
+            });
           if (error) throw error;
         } catch (err) {
           console.error('Location update error:', err);

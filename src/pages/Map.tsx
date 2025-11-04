@@ -92,19 +92,28 @@ const Map = () => {
 
       const { data: locations, error: locationsError } = await supabase
         .from('user_locations')
-        .select(`
-          user_id,
-          latitude,
-          longitude,
-          is_sharing_location,
-          profiles (display_name, avatar_url)
-        `)
+        .select('user_id, latitude, longitude, is_sharing_location')
         .in('user_id', friendIds)
         .eq('is_sharing_location', true);
 
       if (locationsError) throw locationsError;
 
-      if (!signal?.aborted) setFriendsLocations(locations || []);
+      // Fetch profiles separately
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', friendIds);
+
+      // Merge profiles with locations
+      const locationsWithProfiles = (locations || []).map((loc) => {
+        const profile = profiles?.find((p) => p.user_id === loc.user_id);
+        return {
+          ...loc,
+          profiles: profile ? { display_name: profile.display_name, avatar_url: profile.avatar_url } : null,
+        };
+      });
+
+      if (!signal?.aborted) setFriendsLocations(locationsWithProfiles);
     } catch (err) {
       console.error('fetchFriendsLocations error', err);
       toast.error('Failed to load friends locations');
