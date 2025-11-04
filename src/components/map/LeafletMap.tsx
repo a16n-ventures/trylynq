@@ -41,9 +41,8 @@ export const LeafletMap = ({
 }: LeafletMapProps) => {
   const mapRef = useRef<L.Map | null>(null);
 
-  // fallback location (Lagos, Nigeria)
+  // Lagos fallback
   const fallback: [number, number] = [6.5244, 3.3792];
-
   const center: [number, number] = userLocation
     ? [userLocation.latitude, userLocation.longitude]
     : fallback;
@@ -66,30 +65,28 @@ export const LeafletMap = ({
     iconAnchor: [12, 41],
   });
 
+  // ✅ Force map to re-render correctly after load or resize
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const resize = () => map.invalidateSize();
-    const timeout = setTimeout(resize, 800);
+    const timeout = setTimeout(resize, 1000);
     window.addEventListener('resize', resize);
     return () => {
       clearTimeout(timeout);
       window.removeEventListener('resize', resize);
     };
-  }, []);
+  }, [userLocation, friendsLocations]);
 
   const validFriends = friendsLocations.filter(
     (f) => typeof f.latitude === 'number' && typeof f.longitude === 'number'
   );
 
-  console.log('LeafletMap render check');
-
   return (
     <div
       style={{
-        height: '400px',
+        height: '400px', // ✅ ensure visible area
         width: '100%',
-        background: 'red', // temporary 
         position: 'relative',
         borderRadius: 12,
         overflow: 'hidden',
@@ -98,11 +95,11 @@ export const LeafletMap = ({
       <MapContainer
         center={center}
         zoom={13}
-        style={{ height: '100%', width: '100%', zIndex: 0 }}
+        style={{ height: '100%', width: '100%' }}
         ref={(map) => {
           if (map) {
             mapRef.current = map;
-            setTimeout(() => map.invalidateSize(), 600);
+            setTimeout(() => map.invalidateSize(), 800);
           }
         }}
       >
@@ -130,29 +127,22 @@ export const LeafletMap = ({
         ))}
       </MapContainer>
 
-      {/* Overlay shown when no location or error */}
-      {(!userLocation || error || loading) && (
+      {/* Overlay for loading/error */}
+      {(loading || error) && (
         <div
           style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            inset: 0,
             background: 'rgba(0,0,0,0.4)',
             color: '#fff',
             display: 'flex',
-            flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
             fontSize: 14,
             textAlign: 'center',
-            padding: 16,
           }}
         >
-          {loading && 'Fetching your location...'}
-          {error && !loading && error}
-          {!loading && !error && !userLocation && 'Location not available. Showing default map.'}
+          {loading ? 'Fetching your location...' : error}
         </div>
       )}
     </div>
