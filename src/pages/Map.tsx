@@ -277,6 +277,8 @@ const Map = () => {
               </div>
             )}
             {locationError && <div className="text-sm text-muted-foreground">{locationError}</div>}
+            console.log('Map.tsx location:', location);
+            console.log('Map.tsx friends:', friendsWithDistance);
             {(location || friendsWithDistance.length > 0) && (
             <LeafletMap 
               userLocation={location}
