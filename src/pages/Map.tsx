@@ -236,9 +236,6 @@ const Map = () => {
     }
   }; 
 
-  console.log('Map.tsx location:', location);
-  console.log('Map.tsx friends:', friendsWithDistance);
-    
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-primary text-white">
