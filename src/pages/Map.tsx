@@ -8,15 +8,12 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import dynamic from 'next/dynamic';
+import { lazy, Suspense } from 'react';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
-// Dynamically load LeafletMap to prevent SSR blank render
-const LeafletMap = dynamic(() => import('@/components/map/LeafletMap').then(m => m.LeafletMap), {
-  ssr: false,
-});
+const LeafletMap = lazy(() => import('@/components/map/LeafletMap'));
 
 type UserProfile = {
   display_name?: string | null;
@@ -159,9 +156,6 @@ const Map = () => {
       controller.abort();
       if (channel?.unsubscribe) channel.unsubscribe();
       // @ts-ignore
-      if ('removeChannel' in supabase && typeof supabase.removeChannel === 'function') {
-         supabase.removeChannel(channel);
-      }
     };
   }, [user, fetchFriendsLocations]);
 
@@ -286,12 +280,14 @@ const Map = () => {
       <div className="container-mobile py-6 space-y-6">
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-0">
-            <LeafletMap
-              userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
-              friendsLocations={friendsLocations}
-              loading={locationLoading}
-              error={locationError}
-            />
+            <Suspense fallback={<div className="text-center p-6">Loading map...</div>}>
+              <LeafletMap
+                userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
+                friendsLocations={friendsLocations}
+                loading={locationLoading}
+                error={locationError}
+              />
+            </Suspense>
           </CardContent>
         </Card>
         
@@ -322,9 +318,9 @@ const Map = () => {
                       <AvatarImage src={friend.avatar} />
                     ) : (
                       <AvatarFallback className="gradient-primary text-white">
-                        {friend.name
+                        {friend.name ?? '?'
                           .split(' ')
-                          .map((n) => n[0])
+                          .map((n) => n[0] ?? '')
                           .join('')
                           .slice(0, 2)
                           .toUpperCase()}
