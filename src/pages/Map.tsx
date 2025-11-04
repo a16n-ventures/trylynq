@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MapPin, Users, Search, Filter, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -69,6 +70,7 @@ const Map = () => {
   const [friendsLocations, setFriendsLocations] = useState<any[]>([]);
   const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [showContactImport, setShowContactImport] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
   const { user } = useAuth();
   const { location, error: locationError, loading: locationLoading } = useGeolocation();
   const navigate = useNavigate();
@@ -157,7 +159,9 @@ const Map = () => {
       controller.abort();
       if (channel?.unsubscribe) channel.unsubscribe();
       // @ts-ignore
-      if (supabase.removeChannel) supabase.removeChannel(channel);
+      if ('removeChannel' in supabase && typeof supabase.removeChannel === 'function') {
+         supabase.removeChannel(channel);
+      }
     };
   }, [user, fetchFriendsLocations]);
 
