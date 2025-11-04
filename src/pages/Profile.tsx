@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -8,29 +8,139 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Settings, Edit3, MapPin, Users, Camera, Bell, Shield, LogOut, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [locationSharing, setLocationSharing] = useState(true);
   const [notifications, setNotifications] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [bio, setBio] = useState('');
+  const [stats, setStats] = useState({ friends: 0, events: 0, messages: 0 });
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
-  // Mock user data
-  const user = {
-    name: 'John Doe',
-    email: 'john.doe@university.edu',
-    bio: 'Computer Science student at University. Love exploring new places and meeting friends!',
-    avatar: '',
-    location: 'University Campus',
-    joinDate: 'March 2024',
-    friends: 127,
-    mutualFriends: 24
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
+  }, [user]);
+
+  const fetchProfile = async () => {
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (profileData) {
+        setProfile(profileData);
+        setDisplayName(profileData.display_name || '');
+        setBio(profileData.bio || '');
+      }
+
+      // Fetch location sharing status
+      const { data: locationData } = await supabase
+        .from('user_locations')
+        .select('is_sharing_location')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (locationData) {
+        setLocationSharing(locationData.is_sharing_location);
+      }
+
+      // Count friends
+      const { count: friendCount } = await supabase
+        .from('friendships')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${user?.id},addressee_id.eq.${user?.id}`);
+
+      // Count events
+      const { count: eventCount } = await supabase
+        .from('event_attendees')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user?.id);
+
+      // Count messages sent
+      const { count: messageCount } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('sender_id', user?.id);
+
+      setStats({
+        friends: friendCount || 0,
+        events: eventCount || 0,
+        messages: messageCount || 0
+      });
+
+    } catch (error) {
+      console.error('Profile fetch error:', error);
+      toast.error('Failed to load profile');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const stats = [
-    { label: 'Friends', value: user.friends, icon: Users },
-    { label: 'Events Joined', value: 12, icon: MapPin },
-    { label: 'Messages Sent', value: 2847, icon: Bell }
+  const handleSave = async () => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          display_name: displayName,
+          bio: bio
+        })
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      toast.success('Profile updated successfully');
+      setIsEditing(false);
+      fetchProfile();
+    } catch (error) {
+      console.error('Profile update error:', error);
+      toast.error('Failed to update profile');
+    }
+  };
+
+  const handleLocationToggle = async (checked: boolean) => {
+    setLocationSharing(checked);
+    try {
+      await supabase
+        .from('user_locations')
+        .update({ is_sharing_location: checked })
+        .eq('user_id', user?.id);
+      
+      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
+    } catch (error) {
+      console.error('Location toggle error:', error);
+      toast.error('Failed to update location sharing');
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p>Loading profile...</p>
+      </div>
+    );
+  }
+
+  const statsList = [
+    { label: 'Friends', value: stats.friends, icon: Users },
+    { label: 'Events Joined', value: stats.events, icon: MapPin },
+    { label: 'Messages Sent', value: stats.messages, icon: Bell }
   ];
 
   return (
@@ -55,9 +165,9 @@ const Profile = () => {
           <div className="flex items-center gap-4">
             <div className="relative">
               <Avatar className="w-20 h-20">
-                <AvatarImage src={user.avatar} />
+                <AvatarImage src={profile?.avatar_url} />
                 <AvatarFallback className="bg-white/20 text-white text-2xl">
-                  {user.name.split(' ').map(n => n[0]).join('')}
+                  {displayName.split(' ').map(n => n[0]).join('') || 'U'}
                 </AvatarFallback>
               </Avatar>
               {isEditing && (
@@ -73,17 +183,16 @@ const Profile = () => {
             <div className="flex-1">
               {isEditing ? (
                 <Input 
-                  defaultValue={user.name}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
                   className="bg-white/20 border-white/30 text-white placeholder:text-white/70 mb-2"
+                  placeholder="Your name"
                 />
               ) : (
-                <h2 className="heading-lg text-white mb-1">{user.name}</h2>
+                <h2 className="heading-lg text-white mb-1">{displayName || 'Set your name'}</h2>
               )}
-              <div className="flex items-center gap-1 text-white/80 text-sm">
-                <MapPin className="w-4 h-4" />
-                <span>{user.location}</span>
-              </div>
-              <p className="text-white/70 text-sm">Member since {user.joinDate}</p>
+              <p className="text-white/70 text-sm">{user?.email}</p>
+              <p className="text-white/70 text-sm">Member since {new Date(profile?.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
         </div>
@@ -98,19 +207,20 @@ const Profile = () => {
           <CardContent>
             {isEditing ? (
               <Textarea 
-                defaultValue={user.bio}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
                 placeholder="Tell people about yourself..."
                 className="min-h-[100px]"
               />
             ) : (
-              <p className="text-muted-foreground">{user.bio}</p>
+              <p className="text-muted-foreground">{bio || 'No bio yet. Add one by editing your profile!'}</p>
             )}
           </CardContent>
         </Card>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          {stats.map((stat, index) => {
+          {statsList.map((stat, index) => {
             const Icon = stat.icon;
             return (
               <Card key={index} className="gradient-card shadow-card border-0">
@@ -139,7 +249,7 @@ const Profile = () => {
               </div>
               <Switch 
                 checked={locationSharing}
-                onCheckedChange={setLocationSharing}
+                onCheckedChange={handleLocationToggle}
               />
             </div>
             
@@ -178,7 +288,11 @@ const Profile = () => {
               Privacy Policy
             </Button>
             
-            <Button variant="outline" className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50">
+            <Button 
+              variant="outline" 
+              className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
+              onClick={handleSignOut}
+            >
               <LogOut className="w-4 h-4 mr-3" />
               Sign Out
             </Button>
@@ -189,13 +303,17 @@ const Profile = () => {
           <div className="grid grid-cols-2 gap-4">
             <Button 
               variant="outline" 
-              onClick={() => setIsEditing(false)}
+              onClick={() => {
+                setIsEditing(false);
+                setDisplayName(profile?.display_name || '');
+                setBio(profile?.bio || '');
+              }}
             >
               Cancel
             </Button>
             <Button 
               className="gradient-primary text-white"
-              onClick={() => setIsEditing(false)}
+              onClick={handleSave}
             >
               Save Changes
             </Button>

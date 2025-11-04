@@ -2,9 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Leaflet CSS for Map functionality */
-@import 'leaflet/dist/leaflet.css';
-
 /* FriendlySpot App Design System - Modern Social Networking */
 
 @layer base {

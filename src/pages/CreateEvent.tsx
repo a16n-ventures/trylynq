@@ -216,15 +216,19 @@ const CreateEvent = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="price">Ticket Price ($)</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    placeholder="0.00"
-                    step="0.01"
-                    value={eventData.price}
-                    onChange={(e) => setEventData({...eventData, price: e.target.value})}
-                  />
+                  <Label htmlFor="price">Ticket Price (₦)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₦</span>
+                    <Input
+                      id="price"
+                      type="number"
+                      placeholder="0.00"
+                      step="0.01"
+                      value={eventData.price}
+                      onChange={(e) => setEventData({...eventData, price: e.target.value})}
+                      className="pl-8"
+                    />
+                  </div>
                 </div>
               </div>
               
@@ -237,8 +241,8 @@ const CreateEvent = () => {
                     <p>• Earnings transferred within 2 business days</p>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Ticket price: ${eventData.price}</span>
-                    <span className="font-semibold">You earn: ${(parseFloat(eventData.price || '0') * 0.98).toFixed(2)}</span>
+                    <span>Ticket price: ₦{eventData.price}</span>
+                    <span className="font-semibold">You earn: ₦{(parseFloat(eventData.price || '0') * 0.98).toFixed(2)}</span>
                   </div>
                 </div>
               )}

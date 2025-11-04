@@ -1,35 +1,95 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Crown, Zap, Star, Users, TrendingUp, Shield, ArrowLeft, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+
+// Load Flutterwave script
+const loadFlutterwaveScript = () => {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && document.getElementById('flutterwave-script')) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'flutterwave-script';
+    script.src = 'https://checkout.flutterwave.com/v3.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+    document.body.appendChild(script);
+  });
+};
 
 const Premium = () => {
   const navigate = useNavigate();
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+
+  useEffect(() => {
+    loadFlutterwaveScript()
+      .then(() => setScriptLoaded(true))
+      .catch(() => toast.error('Failed to load payment system'));
+  }, []);
 
   const premiumFeatures = [
     {
       icon: <Crown className="w-5 h-5" />,
       title: 'Profile Visibility Boost',
       description: 'Get 3x more profile views and friend suggestions',
-      price: { monthly: 4.99, yearly: 39.99 }
+      price: { monthly: 999, yearly: 9999 }
     },
     {
       icon: <TrendingUp className="w-5 h-5" />,
       title: 'Event Promotion',
       description: 'Promote your events to reach more people in your area',
-      price: { monthly: 7.99, yearly: 69.99 }
+      price: { monthly: 1499, yearly: 14999 }
     },
     {
       icon: <Star className="w-5 h-5" />,
       title: 'Premium Badge',
       description: 'Stand out with a special premium badge on your profile',
-      price: { monthly: 2.99, yearly: 24.99 }
+      price: { monthly: 599, yearly: 4999 }
     }
   ];
+
+  const initializeFlutterwave = (amount: number, description: string) => {
+    // @ts-ignore - Flutterwave is loaded via script
+    if (typeof FlutterwaveCheckout === 'undefined') {
+      toast.error('Payment system not loaded. Please refresh and try again.');
+      return;
+    }
+
+    // @ts-ignore
+    FlutterwaveCheckout({
+      public_key: "FLWPUBK_TEST-SANDBOXDEMOKEY-X",
+      tx_ref: "lynq-" + Date.now(),
+      amount: amount,
+      currency: "NGN",
+      payment_options: "card, banktransfer, ussd",
+      customer: {
+        email: "user@lynqapp.com",
+        name: "Lynq User",
+      },
+      customizations: {
+        title: "Lynq Premium",
+        description: description,
+        logo: "https://your-logo-url.com/logo.png",
+      },
+      callback: function(payment: any) {
+        console.log("Payment successful:", payment);
+        toast.success("Payment successful! Your premium features are now active.");
+      },
+      onclose: function() {
+        console.log("Payment cancelled");
+        toast.info("Payment cancelled");
+      },
+    });
+  };
 
   const fullPremiumFeatures = [
     'Unlimited friend requests',
@@ -64,7 +124,7 @@ const Premium = () => {
         <div className="flex items-center justify-between">
           <div>
             <span className="text-2xl font-bold">
-              ${billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly}
+              ₦{billingPeriod === 'monthly' ? feature.price.monthly.toLocaleString() : feature.price.yearly.toLocaleString()}
             </span>
             <span className="text-muted-foreground">
               /{billingPeriod === 'monthly' ? 'month' : 'year'}
@@ -76,7 +136,13 @@ const Premium = () => {
             </Badge>
           )}
         </div>
-        <Button className="w-full gradient-primary text-white">
+        <Button 
+          className="w-full gradient-primary text-white"
+          onClick={() => initializeFlutterwave(
+            billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly,
+            feature.title
+          )}
+        >
           <Zap className="w-4 h-4 mr-2" />
           Upgrade Now
         </Button>
@@ -152,7 +218,7 @@ const Premium = () => {
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-3xl font-bold">
-                  ${billingPeriod === 'monthly' ? '12.99' : '99.99'}
+                  ₦{billingPeriod === 'monthly' ? '2,499' : '19,999'}
                 </span>
                 <span className="text-muted-foreground">
                   /{billingPeriod === 'monthly' ? 'month' : 'year'}
@@ -174,7 +240,13 @@ const Premium = () => {
               ))}
             </div>
             
-            <Button className="w-full gradient-primary text-white h-12 text-lg">
+            <Button 
+              className="w-full gradient-primary text-white h-12 text-lg"
+              onClick={() => initializeFlutterwave(
+                billingPeriod === 'monthly' ? 2499 : 19999,
+                'Lynq Premium - Full Package'
+              )}
+            >
               <Crown className="w-5 h-5 mr-2" />
               Upgrade to Premium
             </Button>
