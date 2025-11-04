@@ -235,7 +235,10 @@ const Map = () => {
         return <Badge className="status-offline text-xs">Offline</Badge>;
     }
   }; 
-  
+
+  console.log('Map.tsx location:', location);
+  console.log('Map.tsx friends:', friendsWithDistance);
+    
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-primary text-white">
@@ -277,11 +280,9 @@ const Map = () => {
               </div>
             )}
             {locationError && <div className="text-sm text-muted-foreground">{locationError}</div>}
-            console.log('Map.tsx location:', location);
-            console.log('Map.tsx friends:', friendsWithDistance);
             {(location || friendsWithDistance.length > 0) && (
             <LeafletMap 
-              userLocation={location}
+              userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
               friendsLocations={friendsWithDistance}
               loading={locationLoading}
               error={locationError}
