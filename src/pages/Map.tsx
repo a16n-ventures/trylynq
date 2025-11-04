@@ -1,17 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Users, Search, Filter, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { LeafletMap } from '@/components/map/LeafletMap';
+import dynamic from 'next/dynamic';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+
+// Dynamically load LeafletMap to prevent SSR blank render
+const LeafletMap = dynamic(() => import('@/components/map/LeafletMap').then(m => m.LeafletMap), {
+  ssr: false,
+});
 
 type UserProfile = {
   display_name?: string | null;
@@ -61,9 +65,8 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
 };
 
 const Map = () => {
-  const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [friendsLocations, setFriendsLocations] = useState<UserLocationRow[]>([]);
+  const [friendsLocations, setFriendsLocations] = useState<any[]>([]);
   const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [showContactImport, setShowContactImport] = useState(false);
   const { user } = useAuth();
@@ -243,8 +246,8 @@ const Map = () => {
       default:
         return <Badge className="status-offline text-xs">Offline</Badge>;
     }
-  }; 
-
+  };
+  
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-primary text-white">
@@ -278,25 +281,16 @@ const Map = () => {
 
       <div className="container-mobile py-6 space-y-6">
         <Card className="gradient-card shadow-card border-0">
-          <CardContent className="p-4 space-y-3">
-            {locationLoading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-primary border-r-transparent"></div>
-                Getting your location...
-              </div>
-            )}
-            {locationError && <div className="text-sm text-muted-foreground">{locationError}</div>}
-            {(location || friendsWithDistance.length > 0) && (
-            <LeafletMap 
+          <CardContent className="p-0">
+            <LeafletMap
               userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
-              friendsLocations={friendsWithDistance}
+              friendsLocations={friendsLocations}
               loading={locationLoading}
               error={locationError}
-            /> 
-            )}
+            />
           </CardContent>
         </Card>
-
+        
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-4">
