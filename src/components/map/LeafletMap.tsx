@@ -38,6 +38,19 @@ export default function LeafletMap({
   const markersRef = useRef<any[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const hasInitializedCenter = useRef(false);
+  const userHasInteracted = useRef(false);
+
+  const recenterMap = () => {
+    if (!mapRef.current || !userLocation) return;
+    
+    userHasInteracted.current = false;
+    mapRef.current.setView(
+      [userLocation.latitude, userLocation.longitude],
+      13,
+      { animate: true }
+    );
+  };
 
   // Ensure we're on client side
   useEffect(() => {
@@ -71,6 +84,19 @@ export default function LeafletMap({
           center: center,
           zoom: 13,
           zoomControl: true,
+        });
+
+        // Track user interactions
+        map.on('movestart', () => {
+          userHasInteracted.current = true;
+        });
+
+        map.on('zoomstart', () => {
+          userHasInteracted.current = true;
+        });
+
+        map.on('dragstart', () => {
+          userHasInteracted.current = true;
         });
 
         // Add tile layer
@@ -169,15 +195,19 @@ export default function LeafletMap({
           allPoints.push([friend.latitude!, friend.longitude!]);
         });
 
-        // Fit bounds or center on user
-        if (allPoints.length > 1) {
-          const bounds = L.latLngBounds(allPoints);
-          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-        } else if (allPoints.length === 1) {
-          map.setView(allPoints[0], 13);
-        } else if (userLocation) {
-          map.setView([userLocation.latitude, userLocation.longitude], 13);
+        // Only auto-fit bounds on initial load or if user hasn't interacted
+        if (!hasInitializedCenter.current && !userHasInteracted.current) {
+          if (allPoints.length > 1) {
+            const bounds = L.latLngBounds(allPoints);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+          } else if (allPoints.length === 1) {
+            map.setView(allPoints[0], 13);
+          } else if (userLocation) {
+            map.setView([userLocation.latitude, userLocation.longitude], 13);
+          }
+          hasInitializedCenter.current = true;
         }
+        // If user has interacted, just update markers without changing view
 
         // Final resize
         setTimeout(() => map.invalidateSize(), 200);
@@ -224,6 +254,47 @@ export default function LeafletMap({
           background: '#f3f4f6',
         }}
       />
+
+      {/* Re-center button */}
+      {userLocation && mapReady && (
+        <button
+          onClick={recenterMap}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            backgroundColor: 'white',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: '#333',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f9fafb';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'white';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title="Re-center on my location"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          </svg>
+          My Location
+        </button>
+      )}
 
       {/* Status overlay */}
       {(loading || error) && (
