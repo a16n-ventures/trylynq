@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
-const LeafletMap = lazy(() => import('@/components/map/LeafletMap'));
+import LeafletMap from '@/components/map/LeafletMap';
 
 type UserProfile = {
   display_name?: string | null;
@@ -280,14 +280,14 @@ const Map = () => {
       <div className="container-mobile py-6 space-y-6">
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-0">
-            <Suspense fallback={<div className="text-center p-6">Loading map...</div>}>
+            
               <LeafletMap
                 userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
                 friendsLocations={friendsLocations}
                 loading={locationLoading}
                 error={locationError}
               />
-            </Suspense>
+            
           </CardContent>
         </Card>
         
