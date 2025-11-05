@@ -1,8 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* Leaflet CSS */
+@import 'leaflet/dist/leaflet.css';
 
-/* FriendlySpot App Design System - Modern Social Networking */
+/* Lynq App Design System - Modern Social Networking */
 
 @layer base {
   :root {
@@ -234,4 +236,30 @@
     background: hsl(var(--card) / 0.8);
     border: 1px solid hsl(var(--border) / 0.5);
   }
+}
+
+/* Fix for Leaflet map container */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+}
+
+/* Ensure map tiles load properly */
+.leaflet-tile-container {
+  pointer-events: none;
+}
+
+.leaflet-tile {
+  pointer-events: none;
+}
+
+/* Fix marker z-index */
+.leaflet-marker-pane {
+  z-index: 600;
+}
+
+/* Popup styling */
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
 }
