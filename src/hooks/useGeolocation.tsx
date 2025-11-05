@@ -25,19 +25,27 @@ export const useGeolocation = () => {
   const [loading, setLoading] = useState(true);
   const watchId = useRef<number | null>(null);
   const lastSentRef = useRef<number>(0);
+  const hasShownErrorRef = useRef(false);
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by your browser.');
-      toast.error('Geolocation not supported.');
+      if (!hasShownErrorRef.current) {
+        toast.error('Geolocation not supported.');
+        hasShownErrorRef.current = true;
+      }
       setLoading(false);
       return;
     }
 
     let cancelled = false;
+    let initialLocationObtained = false;
 
     const saveLocal = (loc: LocationData) => {
       try {
@@ -48,6 +56,7 @@ export const useGeolocation = () => {
     };
 
     const updateLastSeen = async (isOnline: boolean) => {
+      if (cancelled) return;
       try {
         await supabase
           .from('user_locations')
@@ -70,12 +79,21 @@ export const useGeolocation = () => {
         accuracy: pos.coords.accuracy,
       };
 
+      console.log('Location obtained:', loc);
+      initialLocationObtained = true;
+
       setLocation(loc);
       setError(null);
       setLoading(false);
       saveLocal(loc);
 
-      // Prevent too-frequent updates
+      // Show success toast only once
+      if (!hasShownErrorRef.current) {
+        toast.success('Location access granted');
+        hasShownErrorRef.current = true;
+      }
+
+      // Prevent too-frequent updates to database
       const now = Date.now();
       if (now - lastSentRef.current < 30000) return;
       lastSentRef.current = now;
@@ -92,56 +110,118 @@ export const useGeolocation = () => {
             last_seen: new Date().toISOString(),
           });
         if (error) throw error;
+        console.log('Location updated in database');
       } catch (err) {
         console.error('Location update error:', err);
       }
     };
 
     const handleError = (err: GeolocationPositionError) => {
-      console.warn('Geolocation error:', err);
+      if (cancelled) return;
+      
+      console.warn('Geolocation error:', err.code, err.message);
 
       let message = 'Unable to access your location.';
-      if (err.code === 1) message = 'Permission denied for location access.';
-      else if (err.code === 2) message = 'Position unavailable.';
-      else if (err.code === 3) message = 'Location request timed out.';
+      let shouldShowToast = true;
+
+      if (err.code === 1) {
+        message = 'Location permission denied. Please enable location access.';
+      } else if (err.code === 2) {
+        message = 'Location unavailable. Using last known location.';
+        shouldShowToast = false; // Don't show toast for position unavailable
+      } else if (err.code === 3) {
+        message = 'Location request timed out. Using last known location.';
+        // Only show timeout error if we don't have a saved location
+        shouldShowToast = !location;
+      }
 
       setError(message);
-      toast.error(message);
       setLoading(false);
 
-      const fallback =
-        location ||
-        { latitude: 6.5244, longitude: 3.3792, accuracy: 1000 };
+      // Show toast only once and only for critical errors
+      if (shouldShowToast && !hasShownErrorRef.current) {
+        toast.error(message);
+        hasShownErrorRef.current = true;
+      }
 
-      setLocation(fallback);
-      saveLocal(fallback);
+      // Use cached location or fallback
+      const fallback = location || { 
+        latitude: 6.5244, 
+        longitude: 3.3792, 
+        accuracy: 1000 
+      };
 
-      // Mark user as offline if location fails
+      if (!location) {
+        setLocation(fallback);
+        saveLocal(fallback);
+      }
+
+      // Mark user as offline in database
       updateLastSeen(false);
     };
 
-    // One-time fetch
-    navigator.geolocation.getCurrentPosition(updateLocation, handleError, {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 60000,
-    });
+    // Try to get location with progressive timeouts
+    let getCurrentAttempts = 0;
+    const maxGetCurrentAttempts = 2;
 
-    // Continuous tracking
-    watchId.current = navigator.geolocation.watchPosition(
-      updateLocation,
-      handleError,
-      {
-        enableHighAccuracy: false,
-        timeout: 20000,
-        maximumAge: 60000,
-      }
-    );
+    const attemptGetCurrentPosition = () => {
+      if (cancelled || initialLocationObtained) return;
+      
+      getCurrentAttempts++;
+      const timeout = getCurrentAttempts === 1 ? 10000 : 5000; // 10s first try, 5s second try
 
-    // Mark online
+      console.log(`Attempting to get location (attempt ${getCurrentAttempts}/${maxGetCurrentAttempts})...`);
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          updateLocation(pos);
+        },
+        (err) => {
+          if (getCurrentAttempts < maxGetCurrentAttempts && err.code === 3) {
+            console.log('Retrying location request...');
+            setTimeout(attemptGetCurrentPosition, 1000);
+          } else {
+            handleError(err);
+            // Start watching even if initial request failed
+            if (!cancelled && err.code !== 1) {
+              startWatching();
+            }
+          }
+        },
+        {
+          enableHighAccuracy: getCurrentAttempts === 1, // Try high accuracy first
+          timeout: timeout,
+          maximumAge: getCurrentAttempts === 1 ? 0 : 60000, // Force fresh on first try
+        }
+      );
+    };
+
+    const startWatching = () => {
+      if (cancelled || watchId.current !== null) return;
+
+      console.log('Starting location watch...');
+      
+      watchId.current = navigator.geolocation.watchPosition(
+        updateLocation,
+        (err) => {
+          // Only log watch errors, don't show them to user
+          console.warn('Watch position error:', err.code, err.message);
+        },
+        {
+          enableHighAccuracy: false, // Use less battery for continuous tracking
+          timeout: 30000, // Longer timeout for watch
+          maximumAge: 120000, // Accept cached positions up to 2 minutes old
+        }
+      );
+    };
+
+    // Start the location acquisition process
+    attemptGetCurrentPosition();
+
+    // Mark online when component mounts
     updateLastSeen(true);
 
-    // When the tab/browser closes, mark offline
+    // Handle visibility changes
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         updateLastSeen(false);
@@ -150,19 +230,24 @@ export const useGeolocation = () => {
       }
     };
 
-    window.addEventListener('beforeunload', () => updateLastSeen(false));
+    const handleBeforeUnload = () => {
+      updateLastSeen(false);
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       cancelled = true;
       if (watchId.current !== null) {
         navigator.geolocation.clearWatch(watchId.current);
+        watchId.current = null;
       }
       updateLastSeen(false);
-      window.removeEventListener('beforeunload', () => updateLastSeen(false));
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [user]);
+  }, [user, location]);
 
   return { location, error, loading };
 };
