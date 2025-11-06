@@ -6,15 +6,15 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
+import Discover from "./pages/Discover";
 import Map from "./pages/Map";
 import Messages from "./pages/Messages";
 import Friends from "./pages/Friends";
 import Profile from "./pages/Profile";
 import CreateEvent from "./pages/CreateEvent";
-import SocialFeed from "./pages/SocialFeed";
+import Events from "./pages/Events";
 import Premium from "./pages/Premium";
-import SearchAndFilter from "./components/features/SearchAndFilter";
+import Notifications from "./pages/Notifications";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -34,13 +34,14 @@ const App = () => (
                 <MainLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<SocialFeed />} />
-              <Route path="feed" element={<SocialFeed />} />
+              <Route index element={<Discover />} />
+              <Route path="discover" element={<Discover />} />
+              <Route path="friends" element={<Friends />} />
               <Route path="map" element={<Map />} />
               <Route path="messages" element={<Messages />} />
-              <Route path="friends" element={<Friends />} />
+              <Route path="events" element={<Events />} />
               <Route path="profile" element={<Profile />} />
-              <Route path="search" element={<SearchAndFilter />} />
+              <Route path="notifications" element={<Notifications />} />
             </Route>
             <Route path="/create-event" element={
               <ProtectedRoute>
