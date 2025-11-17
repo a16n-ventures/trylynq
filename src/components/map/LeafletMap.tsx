@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import 'react-leaflet-markercluster/dist/styles.min.css';
 
 // 2. Import the cluster component
-import MarkerClusterGroup from 'react-leaflet-markercluster';
+import MarkerClusterGroup from 'npm:@react-leaflet-markercluster';
 
 // --- Types (from Map.tsx) ---
 type FriendOnMap = {
