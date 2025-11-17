@@ -1,122 +1,338 @@
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { Button } from '@/components/ui/button';
+'use client';
 
-// 1. Import required CSS
+import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-// import 'react-leaflet-markercluster/dist/styles.min.css';
 
-// 2. Import the cluster component
-// import MarkerClusterGroup from 'react-leaflet-markercluster';
-
-// --- Types (from Map.tsx) ---
-type FriendOnMap = {
+interface FriendLocation {
   user_id: string;
-  display_name: string;
-  avatar_url?: string;
-  latitude: number | null;
-  longitude: number | null;
-};
-
-type UserLocation = {
-  latitude: number;
-  longitude: number;
-};
-
-interface LeafletMapProps {
-  userLocation: UserLocation;
-  friendsLocations: FriendOnMap[];
-  loading: boolean;
-  error: Error | null;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  profiles?: {
+    display_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
 }
 
-// --- Fix for default Leaflet icon ---
-// (This is a common issue with React-Leaflet and Webpack)
-// @ts-ignore
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-});
+interface LeafletMapProps {
+  userLocation: { latitude: number; longitude: number } | null;
+  friendsLocations: FriendLocation[];
+  loading?: boolean;
+  error?: string | null;
+}
 
-// --- Helper component to center map ---
-const ChangeView = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
-  const map = useMap();
-  map.setView(center, zoom);
-  return null;
+// Helper to safely convert to number
+const toNumber = (val: string | number | null | undefined): number | null => {
+  if (val === null || val === undefined) return null;
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
+  return Number.isFinite(num) ? num : null;
 };
 
-// --- Custom Friend Icon ---
-const friendIcon = new L.Icon({
-  iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/icons/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+export default function LeafletMap({
+  userLocation,
+  friendsLocations,
+  loading,
+  error,
+}: LeafletMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const [isClient, setIsClient] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const hasInitializedCenter = useRef(false);
+  const userHasInteracted = useRef(false);
 
-// --- Custom User Icon ---
-const userIcon = new L.Icon({
-  iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/icons/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+  const recenterMap = () => {
+    if (!mapRef.current || !userLocation) return;
+    
+    userHasInteracted.current = false;
+    mapRef.current.setView(
+      [userLocation.latitude, userLocation.longitude],
+      13,
+      { animate: true }
+    );
+  };
 
+  // Ensure we're on client side
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-const LeafletMap = ({ userLocation, friendsLocations, loading }: LeafletMapProps) => {
-  const userPosition: [number, number] = [userLocation.latitude, userLocation.longitude];
+  // Initialize map
+  useEffect(() => {
+    if (!isClient || !mapContainerRef.current || mapRef.current) return;
+
+    const initMap = async () => {
+      try {
+        // Dynamic import of Leaflet
+        const L = (await import('leaflet')).default;
+
+        // Fix default marker icons
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        });
+
+        const fallback: [number, number] = [6.5244, 3.3792];
+        const center: [number, number] = userLocation
+          ? [userLocation.latitude, userLocation.longitude]
+          : fallback;
+
+        // Create map
+        const map = L.map(mapContainerRef.current, {
+          center: center,
+          zoom: 13,
+          zoomControl: true,
+        });
+
+        // Track user interactions
+        map.on('movestart', () => {
+          userHasInteracted.current = true;
+        });
+
+        map.on('zoomstart', () => {
+          userHasInteracted.current = true;
+        });
+
+        map.on('dragstart', () => {
+          userHasInteracted.current = true;
+        });
+
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19,
+        }).addTo(map);
+
+        mapRef.current = map;
+        setMapReady(true);
+
+        // Force resize after a short delay
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 100);
+
+      } catch (err) {
+        console.error('Failed to initialize map:', err);
+      }
+    };
+
+    initMap();
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        setMapReady(false);
+      }
+    };
+  }, [isClient, userLocation]);
+
+  // Update markers when data changes
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+
+    const updateMarkers = async () => {
+      try {
+        const L = (await import('leaflet')).default;
+        const map = mapRef.current;
+
+        // Clear existing markers
+        markersRef.current.forEach(marker => marker.remove());
+        markersRef.current = [];
+
+        const userIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+        });
+
+        const friendIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+        });
+
+        const allPoints: [number, number][] = [];
+
+        // Add user marker
+        if (userLocation) {
+          const userMarker = L.marker(
+            [userLocation.latitude, userLocation.longitude],
+            { icon: userIcon }
+          ).addTo(map);
+          userMarker.bindPopup('You are here');
+          markersRef.current.push(userMarker);
+          allPoints.push([userLocation.latitude, userLocation.longitude]);
+        }
+
+        // Add friend markers
+        const validFriends = friendsLocations
+          .map((f) => {
+            const lat = toNumber(f.latitude);
+            const lng = toNumber(f.longitude);
+            return {
+              id: f.user_id,
+              name: f.profiles?.display_name || 'Friend',
+              latitude: lat,
+              longitude: lng,
+            };
+          })
+          .filter((f) => f.latitude !== null && f.longitude !== null);
+
+        validFriends.forEach((friend) => {
+          const marker = L.marker(
+            [friend.latitude!, friend.longitude!],
+            { icon: friendIcon }
+          ).addTo(map);
+          marker.bindPopup(friend.name);
+          markersRef.current.push(marker);
+          allPoints.push([friend.latitude!, friend.longitude!]);
+        });
+
+        // Only auto-fit bounds on initial load or if user hasn't interacted
+        if (!hasInitializedCenter.current && !userHasInteracted.current) {
+          if (allPoints.length > 1) {
+            const bounds = L.latLngBounds(allPoints);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+          } else if (allPoints.length === 1) {
+            map.setView(allPoints[0], 13);
+          } else if (userLocation) {
+            map.setView([userLocation.latitude, userLocation.longitude], 13);
+          }
+          hasInitializedCenter.current = true;
+        }
+        // If user has interacted, just update markers without changing view
+
+        // Final resize
+        setTimeout(() => map.invalidateSize(), 200);
+
+      } catch (err) {
+        console.error('Failed to update markers:', err);
+      }
+    };
+
+    updateMarkers();
+  }, [mapReady, userLocation, friendsLocations]);
+
+  // Handle window resize
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const handleResize = () => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [mapReady]);
+
+  if (!isClient) {
+    return (
+      <div style={{ height: '60vh', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f4f6' }}>
+        <p>Loading map...</p>
+      </div>
+    );
+  }
 
   return (
-    <MapContainer
-      center={userPosition}
-      zoom={13}
-      style={{ height: '400px', width: '100%' }}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    <div style={{ position: 'relative', height: '60vh', minHeight: '400px', width: '100%' }}>
+      <div
+        ref={mapContainerRef}
+        style={{
+          height: '100%',
+          width: '100%',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          background: '#f3f4f6',
+        }}
       />
-      
-      <ChangeView center={userPosition} zoom={13} />
 
-      {/* User's Marker (Not clustered) */}
-      {!loading && (
-        <Marker position={userPosition} icon={userIcon}>
-          <Popup>You are here</Popup>
-        </Marker>
+      {/* Re-center button */}
+      {userLocation && mapReady && (
+        <button
+          onClick={recenterMap}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            backgroundColor: 'white',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: '#333',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f9fafb';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'white';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title="Re-center on my location"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          </svg>
+          My Location
+        </button>
       )}
 
-      {/* 3. Wrap friend markers in the Cluster component 
-      <MarkerClusterGroup>
-        {friendsLocations
-          .filter(friend => friend.latitude && friend.longitude) // Only map valid locations
-          .map(friend => (
-            <Marker
-              key={friend.user_id}
-              position={[friend.latitude!, friend.longitude!]}
-              icon={friendIcon}
-            >
-              <Popup>
-                <div className="flex items-center gap-2">
-                  <img src={friend.avatar_url || ''} alt={friend.display_name} className="w-10 h-10 rounded-full" />
-                  <div>
-                    <p className="font-semibold">{friend.display_name}</p>
-                    <Button size="sm" className="mt-1 h-7">View</Button>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-      </MarkerClusterGroup>
-      */ }
+      {/* Status overlay */}
+      {(loading || error) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            background: 'rgba(0,0,0,0.7)',
+            color: '#fff',
+            padding: '12px 16px',
+            fontSize: '14px',
+            textAlign: 'center',
+            zIndex: 1000,
+            borderTopLeftRadius: '12px',
+            borderTopRightRadius: '12px',
+          }}
+        >
+          {loading && 'Fetching your location...'}
+          {error && !loading && error}
+        </div>
+      )}
 
-    </MapContainer>
+      {!mapReady && !loading && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            fontSize: '14px',
+            color: '#666',
+          }}
+        >
+          Initializing map...
+        </div>
+      )}
+    </div>
   );
-};
-
-export default LeafletMap;
+}
