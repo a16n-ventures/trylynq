@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Crosshair } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
