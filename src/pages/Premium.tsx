@@ -36,9 +36,6 @@ const loadFlutterwaveScript = () => {
 };
 
 // --- Environment Variable ---
-// 1. Get Public Key from .env
-//    Your .env file must contain:
-//    VITE_FLUTTERWAVE_PUBLIC_KEY="YOUR_FLW_PUBLIC_KEY"
 const FLUTTERWAVE_PUBLIC_KEY = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
 
 if (!FLUTTERWAVE_PUBLIC_KEY) {
@@ -60,7 +57,6 @@ const Premium = () => {
   }, []);
 
   const premiumFeatures = [
-    // ... (your existing features)
     {
       icon: <Crown className="w-5 h-5" />,
       title: 'Profile Visibility Boost',
@@ -92,7 +88,7 @@ const Premium = () => {
     'Enhanced privacy controls'
   ];
 
-  // 2. Refactored payment initialization
+  // Refactored payment initialization
   const initializeFlutterwave = (amount: number, description: string) => {
     if (!scriptLoaded || !FLUTTERWAVE_PUBLIC_KEY) {
       toast.error('Payment system not ready. Please try again.');
@@ -117,15 +113,14 @@ const Premium = () => {
       payment_options: "card, banktransfer, ussd",
       customer: {
         email: user.email || "user@lynqapp.com", // Use user's email
-        name: "Lynq User", // TODO: Get from user's profile
+        name: user.email || "Lynq User", // Use user's email or a fallback
       },
       customizations: {
         title: "Lynq Premium",
         description: description,
-        logo: "https://your-logo-url.com/logo.png", // TODO: Add your logo URL
       },
       
-      // 3. SECURE CALLBACK HANDLER
+      // SECURE CALLBACK HANDLER
       callback: async function(payment: any) {
         // This function is called *after* the payment modal closes
         // It does NOT mean the payment was successful yet, just that it's complete.
@@ -175,13 +170,40 @@ const Premium = () => {
     });
   };
 
-  // ... (Rest of your component, PremiumCard, etc. No changes needed below)
-
   const PremiumCard = ({ feature }: { feature: (typeof premiumFeatures)[0] }) => (
     <Card className="gradient-card shadow-card border-0 relative overflow-hidden">
-      {/* ... (your card content) ... */}
+      <div className="absolute top-4 right-4">
+        <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black">
+          Popular
+        </Badge>
+      </div>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="gradient-primary text-white w-12 h-12 rounded-xl flex items-center justify-center">
+            {feature.icon}
+          </div>
+          <div>
+            <CardTitle className="heading-md">{feature.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">{feature.description}</p>
+          </div>
+        </div>
+      </CardHeader>
       <CardContent className="space-y-4">
-        {/* ... */}
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-2xl font-bold">
+              ₦{billingPeriod === 'monthly' ? feature.price.monthly.toLocaleString() : feature.price.yearly.toLocaleString()}
+            </span>
+            <span className="text-muted-foreground">
+              /{billingPeriod === 'monthly' ? 'month' : 'year'}
+            </span>
+          </div>
+          {billingPeriod === 'yearly' && (
+            <Badge variant="secondary" className="bg-green-100 text-green-800">
+              Save 30%
+            </Badge>
+          )}
+        </div>
         <Button 
           className="w-full gradient-primary text-white"
           onClick={() => initializeFlutterwave(
@@ -250,7 +272,33 @@ const Premium = () => {
 
         {/* Full Premium Package */}
         <Card className="gradient-card shadow-card border-0 relative overflow-hidden">
-          {/* ... (your full package card content) ... */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5" />
+          <CardHeader className="pb-3 relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="gradient-primary text-white w-12 h-12 rounded-xl flex items-center justify-center">
+                <Crown className="w-6 h-6" />
+              </div>
+              <div>
+                <CardTitle className="heading-lg">Lynq Premium</CardTitle>
+                <p className="text-muted-foreground">Everything you need to connect better</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-3xl font-bold">
+                  ₦{billingPeriod === 'monthly' ? '2,499' : '19,999'}
+                </span>
+                <span className="text-muted-foreground">
+                  /{billingPeriod === 'monthly' ? 'month' : 'year'}
+                </span>
+              </div>
+              {billingPeriod === 'yearly' && (
+                <Badge className="bg-green-100 text-green-800">Save 35%</Badge>
+              )}
+            </div>
+          </CardHeader>
+          
           <CardContent className="space-y-4 relative">
             <div className="grid grid-cols-2 gap-2">
               {fullPremiumFeatures.map((feature, index) => (
@@ -280,10 +328,36 @@ const Premium = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Revenue Information */}
+        <Card className="gradient-card shadow-card border-0">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Event Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <h4 className="font-semibold text-sm mb-2">How Event Revenue Works</h4>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p>• 2% platform fee on all ticket sales</p>
+                <p>• Secure payment processing via Flutterwave</p>
+                <p>• Automatic payouts within 2 business days</p>
+                <p>• Built-in fraud protection and refund management</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <Button variant="outline" className="w-full">
+                View Revenue Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 };
 
 export default Premium;
-    
+                           
