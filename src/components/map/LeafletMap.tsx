@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@components/ui/button';
+import { Crosshair } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 interface FriendLocation {
@@ -251,43 +253,15 @@ export default function LeafletMap({
 
       {/* Re-center button */}
       {userLocation && mapReady && (
-        <button
+        <Button
           onClick={recenterMap}
-          style={{
-            position: 'absolute',
-            bottom: '20px',
-            right: '20px',
-            backgroundColor: 'white',
-            border: '2px solid rgba(0,0,0,0.2)',
-            borderRadius: '8px',
-            padding: '10px 12px',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: '#333',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f9fafb';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'white';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
+          variant="secondary"
+          size="icon"
+          className="absolute bottom-5 right-5 z-[1000] rounded-full shadow-lg"
           title="Re-center on my location"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <circle cx="12" cy="12" r="3" fill="currentColor"/>
-          </svg>
-          My Location
-        </button>
+          <Crosshair className="h-5 w-5" />
+        </Button>
       )}
 
       {/* Status overlay */}
