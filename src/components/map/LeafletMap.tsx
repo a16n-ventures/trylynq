@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Crosshair } from 'lucide-react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import 'leaflet/dist/leaflet.css';
+
+export interface LeafletMapHandle {
+  recenter: () => void;
+}
 
 interface FriendLocation {
   user_id: string;
@@ -29,12 +31,12 @@ const toNumber = (val: string | number | null | undefined): number | null => {
   return Number.isFinite(num) ? num : null;
 };
 
-export default function LeafletMap({
+const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
   userLocation,
   friendsLocations,
   loading,
   error,
-}: LeafletMapProps) {
+}, ref) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -53,6 +55,10 @@ export default function LeafletMap({
       { animate: true }
     );
   };
+
+  useImperativeHandle(ref, () => ({
+    recenter: recenterMap,
+  )}
 
   // Ensure we're on client side
   useEffect(() => {
@@ -250,19 +256,6 @@ export default function LeafletMap({
           background: '#f3f4f6',
         }}
       />
-
-      {/* Re-center button */}
-      {userLocation && mapReady && (
-        <Button
-          onClick={recenterMap}
-          variant="secondary"
-          size="icon"
-          className="absolute bottom-5 right-5 z-[1000] rounded-full shadow-lg"
-          title="Re-center on my location"
-        >
-          <Crosshair className="h-5 w-5" />
-        </Button>
-      )}
 
       {/* Status overlay */}
       {(loading || error) && (
