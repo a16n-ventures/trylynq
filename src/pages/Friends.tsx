@@ -38,7 +38,7 @@ export default function Friends() {
   // --- QUERIES ---
 
   // 1. Fetch ACCEPTED friends
-  const { data: friends = [], isLoading: loadingFriends } = useQuery<Friendship[]>({
+  const { data: friends = [], isPending: loadingFriends } = useQuery<Friendship[]>({
     queryKey: ['friends', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -64,7 +64,7 @@ export default function Friends() {
   });
 
   // 2. Fetch PENDING friend requests
-  const { data: requests = [], isLoading: loadingRequests } = useQuery<Friendship[]>({
+  const { data: requests = [], isPending: loadingRequests } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -98,7 +98,7 @@ export default function Friends() {
 
   // 4. Fetch SUGGESTIONS (profiles that are NOT friends or pending)
   //    This query now intelligently excludes existing connections
-  const { data: suggestions = [], isLoading: loadingSuggestions } = useQuery<Profile[]>({
+  const { data: suggestions = [], isPending: loadingSuggestions } = useQuery<Profile[]>({
     queryKey: ['suggestions', userId, existingFriendIds],
     queryFn: async () => {
       if (!userId) return [];
