@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { MapPin, Users, Search, Filter, UserPlus } from 'lucide-react';
+import { Crosshair, MapPin, Users, Search, Filter, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
 import LeafletMap from '@/components/map/LeafletMap';
+import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 
 type UserProfile = {
   display_name?: string | null;
@@ -70,6 +71,12 @@ const Map = () => {
   const { user } = useAuth();
   const { location, error: locationError, loading: locationLoading } = useGeolocation();
   const navigate = useNavigate();
+
+  const mapRef = useRef<LeafletMapHandle>(null);
+
+  const handleRecenter = () => {
+    mapRef.current?.recenter();
+  }
 
   const fetchFriendsLocations = useCallback(async (signal?: AbortSignal) => {
     if (!user) return;
@@ -251,7 +258,7 @@ const Map = () => {
       
       {/* 2. MAP LAYER (z-0): Absolute position to fill parent, sits in background */}
       <div className="absolute inset-0 z-0">
-        <LeafletMap
+        <LeafletMap ref={mapRef}
           userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
           friendsLocations={friendsLocations}
           loading={locationLoading}
@@ -296,7 +303,22 @@ const Map = () => {
         <div className="flex-grow" />
 
         {/* C. BOTTOM SHEET: Bottom of flex, pointer-events-auto, scrollable, max-height */}
-        <div className="pointer-events-auto overflow-y-auto max-h-[60vh]">
+        <div className="relative pointer-events-auto"> 
+
+          {/* Re-center button */}
+      {location && (
+        <Button
+          onClick={handleRecenter}
+          variant="secondary"
+          size="icon"
+          className="absolute bottom-5 right-5 top-5 z-20 rounded-full shadow-lg"
+          title="Re-center on my location"
+        >
+          <Crosshair className="h-5 w-5" />
+        </Button>
+      )}
+
+        <div className="overflow-y-auto max-h-[60vh]">
           <div className="container-mobile py-6 space-y-6">
             
             {/* Card 1: Nearby Friends */}
@@ -423,6 +445,7 @@ const Map = () => {
           </div>
         </div>
       </div>
+    </div>
 
       {/* 4. MODAL: Renders in a portal, sits on top of everything */}
       <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
