@@ -35,7 +35,7 @@ const MainLayout = () => {
     if (user) {
       supabase
         .from('profiles')
-        .select('*')
+        .select('id, user_id, display_name, avatar_url, bio, location, created_at')
         .eq('user_id', user.id)
         .single()
         .then(({ data }) => setProfile(data));
