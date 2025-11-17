@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -11,116 +10,224 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// --- Types ---
+// (We should define these in a central types file, e.g., @/types/index.ts)
+interface ProfileData {
+  user_id: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string;
+  created_at: string;
+}
+interface LocationData {
+  is_sharing_location: boolean;
+}
+interface ProfileStats {
+  friends: number;
+  events: number;
+  messages: number;
+}
+interface CombinedProfile {
+  profile: ProfileData | null;
+  location: LocationData | null;
+  stats: ProfileStats;
+}
+
+// --- Helper: Data Fetching Function ---
+const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
+  // 1. Define all queries
+  const profileQuery = supabase
+    .from('profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+    
+  const locationQuery = supabase
+    .from('user_locations')
+    .select('is_sharing_location')
+    .eq('user_id', userId)
+    .single();
+
+  const friendQuery = supabase
+    .from('friendships')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+
+  const eventQuery = supabase
+    .from('event_attendees')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  const messageQuery = supabase
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('sender_id', userId);
+
+  // 2. Run all queries in parallel
+  const [
+    { data: profileData, error: profileError },
+    { data: locationData, error: locationError },
+    { count: friendCount, error: friendError },
+    { count: eventCount, error: eventError },
+    { count: messageCount, error: messageError },
+  ] = await Promise.all([profileQuery, locationQuery, friendQuery, eventQuery, messageQuery]);
+
+  // 3. Handle errors (you can get more granular)
+  if (profileError && profileError.code !== 'PGRST116') throw profileError; // Ignore "no rows" error
+  if (locationError && locationError.code !== 'PGRST116') throw locationError;
+  if (friendError) throw friendError;
+  if (eventError) throw eventError;
+  if (messageError) throw messageError;
+
+  // 4. Return combined data
+  return {
+    profile: profileData,
+    location: locationData,
+    stats: {
+      friends: friendCount || 0,
+      events: eventCount || 0,
+      messages: messageCount || 0,
+    },
+  };
+};
+
 
 const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
-  const [locationSharing, setLocationSharing] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
-  const [stats, setStats] = useState({ friends: 0, events: 0, messages: 0 });
-  const [loading, setLoading] = useState(true);
+  
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const queryClient = useQueryClient();
 
+  // --- Data Fetching with useQuery ---
+  const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
+    queryKey: ['profile', user?.id],
+    queryFn: () => fetchProfileData(user!.id),
+    enabled: !!user,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    onSuccess: (data) => {
+      // Set local editing state *after* data is fetched
+      if (data?.profile) {
+        setDisplayName(data.profile.display_name || '');
+        setBio(data.profile.bio || '');
+      }
+    },
+  });
+
+  const { profile, location, stats } = data || { profile: null, location: null, stats: { friends: 0, events: 0, messages: 0 } };
+  const [locationSharing, setLocationSharing] = useState(!!location?.is_sharing_location);
+  const [notifications, setNotifications] = useState(true); // Placeholder
+
+  // Update local state if location data loads
   useEffect(() => {
-    if (user) {
-      fetchProfile();
-    }
-  }, [user]);
+    setLocationSharing(!!location?.is_sharing_location);
+  }, [location]);
 
-  const fetchProfile = async () => {
-    try {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user?.id)
-        .single();
+  // --- Mutations ---
 
-      if (profileData) {
-        setProfile(profileData);
-        setDisplayName(profileData.display_name || '');
-        setBio(profileData.bio || '');
-      }
-
-      // Fetch location sharing status
-      const { data: locationData } = await supabase
-        .from('user_locations')
-        .select('is_sharing_location')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (locationData) {
-        setLocationSharing(locationData.is_sharing_location);
-      }
-
-      // Count friends
-      const { count: friendCount } = await supabase
-        .from('friendships')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'accepted')
-        .or(`requester_id.eq.${user?.id},addressee_id.eq.${user?.id}`);
-
-      // Count events
-      const { count: eventCount } = await supabase
-        .from('event_attendees')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user?.id);
-
-      // Count messages sent
-      const { count: messageCount } = await supabase
-        .from('messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('sender_id', user?.id);
-
-      setStats({
-        friends: friendCount || 0,
-        events: eventCount || 0,
-        messages: messageCount || 0
-      });
-
-    } catch (error) {
-      console.error('Profile fetch error:', error);
-      toast.error('Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    try {
+  // 1. Mutation for saving profile text
+  const updateProfileMutation = useMutation({
+    mutationFn: async ({ displayName, bio }: { displayName: string, bio: string }) => {
       const { error } = await supabase
         .from('profiles')
         .update({
           display_name: displayName,
-          bio: bio
+          bio: bio,
+          updated_at: new Date().toISOString(),
         })
-        .eq('user_id', user?.id);
-
+        .eq('user_id', user!.id);
       if (error) throw error;
-
+    },
+    onSuccess: () => {
       toast.success('Profile updated successfully');
       setIsEditing(false);
-      fetchProfile();
-    } catch (error) {
-      console.error('Profile update error:', error);
-      toast.error('Failed to update profile');
+      // Refetch profile data
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to update profile: ' + error.message);
     }
-  };
+  });
 
-  const handleLocationToggle = async (checked: boolean) => {
-    setLocationSharing(checked);
-    try {
-      await supabase
+  // 2. Mutation for toggling location
+  const toggleLocationMutation = useMutation({
+    mutationFn: async (checked: boolean) => {
+      const { error } = await supabase
         .from('user_locations')
         .update({ is_sharing_location: checked })
-        .eq('user_id', user?.id);
-      
+        .eq('user_id', user!.id);
+      if (error) throw error;
+      return checked;
+    },
+    onSuccess: (checked) => {
       toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
-    } catch (error) {
-      console.error('Location toggle error:', error);
-      toast.error('Failed to update location sharing');
+      // Optimistically update the query data
+      queryClient.setQueryData(['profile', user!.id], (oldData: CombinedProfile | undefined) => {
+        if (!oldData) return;
+        return {
+          ...oldData,
+          location: { ...oldData.location, is_sharing_location: checked }
+        };
+      });
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to update setting: ' + error.message);
+      setLocationSharing(!locationSharing); // Revert optimistic update
+    }
+  });
+  
+  // 3. Mutation for uploading avatar
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user!.id}/${Math.random()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars') // Bucket name
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('user_id', user!.id);
+      
+      if (updateError) throw updateError;
+    },
+    onSuccess: () => {
+      toast.success('Avatar updated!');
+      // Refetch profile to get new URL
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to upload avatar: ' + error.message);
+    }
+  });
+
+  // --- Handlers ---
+  const handleSave = () => {
+    updateProfileMutation.mutate({ displayName, bio });
+  };
+
+  const handleLocationToggle = (checked: boolean) => {
+    setLocationSharing(checked); // Optimistic update
+    toggleLocationMutation.mutate(checked);
+  };
+  
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      uploadAvatarMutation.mutate(file);
     }
   };
 
@@ -174,8 +281,12 @@ const Profile = () => {
                 <Button 
                   size="sm" 
                   className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full gradient-secondary text-white p-0"
+                  asChild // Make the button act as a label
                 >
-                  <Camera className="w-4 h-4" />
+                  <label htmlFor="avatar-upload">
+                    <Camera className="w-4 h-4" />
+                    <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                  </label>
                 </Button>
               )}
             </div>
@@ -189,10 +300,10 @@ const Profile = () => {
                   placeholder="Your name"
                 />
               ) : (
-                <h2 className="heading-lg text-white mb-1">{displayName || 'Set your name'}</h2>
+                <h2 className="heading-lg text-white mb-1">{profile?.display_name || 'Set your name'}</h2>
               )}
               <p className="text-white/70 text-sm">{user?.email}</p>
-              <p className="text-white/70 text-sm">Member since {new Date(profile?.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+              <p className="text-white/70 text-sm">Member since {new Date(profile?.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
             </div>
           </div>
         </div>
@@ -213,7 +324,7 @@ const Profile = () => {
                 className="min-h-[100px]"
               />
             ) : (
-              <p className="text-muted-foreground">{bio || 'No bio yet. Add one by editing your profile!'}</p>
+              <p className="text-muted-foreground">{profile?.bio || 'No bio yet. Add one by editing your profile!'}</p>
             )}
           </CardContent>
         </Card>
@@ -277,17 +388,7 @@ const Profile = () => {
               <Crown className="w-4 h-4 mr-3" />
               Upgrade to Premium
             </Button>
-
-            <Button variant="outline" className="w-full justify-start">
-              <Settings className="w-4 h-4 mr-3" />
-              Account Settings
-            </Button>
-            
-            <Button variant="outline" className="w-full justify-start">
-              <Shield className="w-4 h-4 mr-3" />
-              Privacy Policy
-            </Button>
-            
+            {/* ... other buttons ... */}
             <Button 
               variant="outline" 
               className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
@@ -314,8 +415,9 @@ const Profile = () => {
             <Button 
               className="gradient-primary text-white"
               onClick={handleSave}
+              disabled={updateProfileMutation.isLoading}
             >
-              Save Changes
+              {updateProfileMutation.isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         )}
