@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 
 // 1. Import required CSS
 import 'leaflet/dist/leaflet.css';
-import 'react-leaflet-markercluster/dist/styles.min.css';
+// import 'react-leaflet-markercluster/dist/styles.min.css';
 
 // 2. Import the cluster component
-import MarkerClusterGroup from 'npm:@react-leaflet-markercluster';
+// import MarkerClusterGroup from 'react-leaflet-markercluster';
 
 // --- Types (from Map.tsx) ---
 type FriendOnMap = {
@@ -91,7 +91,7 @@ const LeafletMap = ({ userLocation, friendsLocations, loading }: LeafletMapProps
         </Marker>
       )}
 
-      {/* 3. Wrap friend markers in the Cluster component */}
+      {/* 3. Wrap friend markers in the Cluster component 
       <MarkerClusterGroup>
         {friendsLocations
           .filter(friend => friend.latitude && friend.longitude) // Only map valid locations
@@ -113,6 +113,7 @@ const LeafletMap = ({ userLocation, friendsLocations, loading }: LeafletMapProps
             </Marker>
           ))}
       </MarkerClusterGroup>
+      */ }
 
     </MapContainer>
   );
