@@ -245,15 +245,6 @@
   z-index: 1;
 }
 
-/* Ensure map tiles load properly */
-.leaflet-tile-container {
-  pointer-events: none;
-}
-
-.leaflet-tile {
-  pointer-events: none;
-}
-
 /* Fix marker z-index */
 .leaflet-marker-pane {
   z-index: 600;
