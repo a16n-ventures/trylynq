@@ -1,92 +1,235 @@
 import React, { useMemo, useRef, useEffect, useState } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Plus } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
+// --- TYPES ---
+// This is the expected shape of the data from the 'get_conversations' RPC
 type Conversation = {
-  id: number;
-  name: string;
-  avatar?: string;
-  lastMessage: string;
-  timestamp: string;
-  unread: number;
-  online?: boolean;
-  isGroup?: boolean;
+  partner_id: string;
+  display_name: string;
+  avatar_url?: string;
+  last_message_content: string;
+  last_message_at: string;
+  unread_count: number;
+  // We'll add presence later
+  // online: boolean;
 };
 
+// This maps to your 'messages' table, with the 'sender' profile joined
 type ChatMessage = {
-  id: number;
-  sender: string;
-  message: string;
-  timestamp: string;
-  isMe?: boolean;
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_me?: boolean; // We'll add this client-side
+  sender: {
+    display_name: string;
+    avatar_url?: string;
+  };
 };
 
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: 1,
-    name: 'Alex Johnson',
-    avatar: '',
-    lastMessage: 'Hey! Are you free for coffee later?',
-    timestamp: '2 min ago',
-    unread: 2,
-    online: true
-  },
-  {
-    id: 2,
-    name: 'Sarah Chen',
-    avatar: '',
-    lastMessage: 'Perfect! See you at the library',
-    timestamp: '1 hour ago',
-    unread: 0,
-    online: false
-  },
-  {
-    id: 3,
-    name: 'Study Group',
-    avatar: '',
-    lastMessage: 'Mike: Anyone up for reviewing tomorrow?',
-    timestamp: '3 hours ago',
-    unread: 5,
-    online: true,
-    isGroup: true
-  }
-];
-
-const MOCK_CHAT_MESSAGES: ChatMessage[] = [
-  { id: 1, sender: 'Alex Johnson', message: "Hey! How's your day going?", timestamp: '10:30 AM', isMe: false },
-  { id: 2, sender: 'Me', message: 'Pretty good! Just finished my morning class', timestamp: '10:32 AM', isMe: true },
-  { id: 3, sender: 'Alex Johnson', message: 'Nice! Are you free for coffee later? I found this great new place downtown', timestamp: '10:35 AM', isMe: false },
-  { id: 4, sender: 'Me', message: 'Sounds perfect! What time works for you?', timestamp: '10:37 AM', isMe: true }
-];
-
+// --- COMPONENT ---
 const Messages: React.FC = () => {
-  const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
-  const [message, setMessage] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const conversations = useMemo(() => MOCK_CONVERSATIONS, []);
-  const chatMessages = useMemo(() => (selectedChat ? MOCK_CHAT_MESSAGES : []), [selectedChat]);
+  const [selectedPartner, setSelectedPartner] = useState<Conversation | null>(null);
+  const [message, setMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // --- DATA FETCHING ---
+
+  // 1. Fetch the list of conversations
+  // This query relies on a Supabase RPC function (see note below)
+  const { data: conversations = [], isLoading: loadingConversations } = useQuery<Conversation[]>({
+    queryKey: ['conversations', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase.rpc('get_conversations');
+      
+      if (error) {
+        console.error('Error fetching conversations:', error);
+        toast.error('Failed to load conversations');
+        return [];
+      }
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  // 2. Fetch messages for the *selected* chat
+  const { data: chatMessages = [], isLoading: loadingMessages } = useQuery<ChatMessage[]>({
+    queryKey: ['messages', selectedPartner?.partner_id],
+    queryFn: async () => {
+      if (!selectedPartner || !user) return [];
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          sender_id,
+          receiver_id,
+          content,
+          created_at,
+          sender:profiles!sender_id (display_name, avatar_url)
+        `)
+        .or(
+          `and(sender_id.eq.${user.id},receiver_id.eq.${selectedPartner.partner_id}),` +
+          `and(sender_id.eq.${selectedPartner.partner_id},receiver_id.eq.${user.id})`
+        )
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        toast.error('Failed to load messages');
+        return [];
+      }
+      
+      // Add 'is_me' flag for UI
+      return data.map(msg => ({ ...msg, is_me: msg.sender_id === user.id }));
+    },
+    enabled: !!selectedPartner && !!user,
+  });
+
+  // 3. Mutation for sending a message
+  const sendMessageMutation = useMutation({
+    mutationFn: async (newMessageContent: string) => {
+      if (!user || !selectedPartner) throw new Error('User or partner not defined');
+
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          sender_id: user.id,
+          receiver_id: selectedPartner.partner_id,
+          content: newMessageContent,
+        });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Don't need to manually refetch, real-time subscription will handle it
+    },
+    onError: (error: Error) => {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+    },
+  });
+
+  // --- REAL-TIME SUBSCRIPTIONS ---
 
   useEffect(() => {
-    // scroll to bottom whenever chatMessages change
+    if (!user) return;
+
+    // 1. Listen for *any* new message to update the conversation list
+    const conversationChannel = supabase
+      .channel('public:messages')
+      .on(
+        'postgres_changes',
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages',
+          // Only listen for messages *sent to me*
+          filter: `receiver_id=eq.${user.id}` 
+        },
+        (payload) => {
+          console.log('New message received, refetching conversations:', payload);
+          // Refetch the conversation list to update last message/unread count
+          queryClient.invalidateQueries({ queryKey: ['conversations', user.id] });
+        }
+      )
+      .subscribe();
+
+    // 2. Listen for messages *in the active chat*
+    let chatChannel: any = null;
+    if (selectedPartner) {
+      chatChannel = supabase
+        .channel(`chat:${[user.id, selectedPartner.partner_id].sort().join(':')}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            // Filter for messages *from my partner*
+            filter: `sender_id=eq.${selectedPartner.partner_id}`
+          },
+          (payload) => {
+            // New message from partner, refetch the messages query
+            console.log('New message in active chat:', payload);
+            queryClient.invalidateQueries({ queryKey: ['messages', selectedPartner.partner_id] });
+          }
+        )
+        .subscribe();
+    }
+
+    // Cleanup subscriptions on unmount or when selection changes
+    return () => {
+      supabase.removeChannel(conversationChannel);
+      if (chatChannel) {
+        supabase.removeChannel(chatChannel);
+      }
+    };
+  }, [user, selectedPartner, queryClient]);
+
+
+  // --- UI LOGIC ---
+
+  // Scroll to bottom when new messages are loaded
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages.length, selectedChat]);
+  }, [chatMessages.length, selectedPartner]);
 
   const handleSendMessage = () => {
-    if (!message.trim()) return;
-    // TODO: send message via API / websocket
-    console.log('Sending message:', message);
+    const content = message.trim();
+    if (!content) return;
+    
+    // Optimistically add message to UI
+    const optimisticMessage: ChatMessage = {
+      id: Math.random().toString(), // temp ID
+      sender_id: user!.id,
+      receiver_id: selectedPartner!.partner_id,
+      content: content,
+      created_at: new Date().toISOString(),
+      is_me: true,
+      sender: { display_name: 'Me', avatar_url: '' }, // Sender profile is not critical for optimistic update
+    };
+
+    queryClient.setQueryData(
+      ['messages', selectedPartner?.partner_id],
+      (oldData: ChatMessage[] | undefined) => [...(oldData || []), optimisticMessage]
+    );
+
+    // Send to Supabase
+    sendMessageMutation.mutate(content);
     setMessage('');
   };
 
-  if (selectedChat) {
+  // Filter conversations for search
+  const filteredConversations = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter(convo =>
+      convo.display_name.toLowerCase().includes(q)
+    );
+  }, [conversations, searchQuery]);
+
+  // --- RENDER ---
+
+  if (selectedPartner) {
+    // --- CHAT VIEW ---
     return (
       <div className="min-h-screen bg-background flex flex-col">
         {/* Chat Header */}
@@ -97,26 +240,27 @@ const Messages: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className="text-white hover:bg-white/20 p-2"
-                onClick={() => setSelectedChat(null)}
+                onClick={() => setSelectedPartner(null)}
                 aria-label="Back to conversations"
               >
                 <ArrowLeft className="w-5 h-5" />
               </Button>
 
               <Avatar className="w-10 h-10">
-                {selectedChat.avatar ? (
-                  <AvatarImage src={selectedChat.avatar} />
+                {selectedPartner.avatar_url ? (
+                  <AvatarImage src={selectedPartner.avatar_url} />
                 ) : (
                   <AvatarFallback className="bg-white/20 text-white">
-                    {selectedChat.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                    {selectedPartner.display_name.split(' ').map(n => n[0]).join('').slice(0,2)}
                   </AvatarFallback>
                 )}
               </Avatar>
 
               <div className="flex-1 min-w-0">
-                <h2 className="font-semibold text-white truncate">{selectedChat.name}</h2>
+                <h2 className="font-semibold text-white truncate">{selectedPartner.display_name}</h2>
                 <p className="text-sm text-white/70 truncate">
-                  {selectedChat.online ? 'Active now' : 'Last seen 1 hour ago'}
+                  {/* TODO: Add real-time presence */}
+                  Active now
                 </p>
               </div>
 
@@ -137,16 +281,22 @@ const Messages: React.FC = () => {
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 container-mobile py-4 space-y-4 overflow-y-auto">
-          {chatMessages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[70%] ${msg.isMe ? 'order-2' : 'order-1'}`}>
-                <div className={`rounded-2xl px-4 py-2 ${msg.isMe ? 'gradient-primary text-white' : 'bg-muted text-foreground'}`}>
-                  <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+          {loadingMessages ? (
+            <div className="text-center text-muted-foreground p-8">Loading messages...</div>
+          ) : (
+            chatMessages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[70%]`}>
+                  <div className={`rounded-2xl px-4 py-2 ${msg.is_me ? 'gradient-primary text-white' : 'bg-muted text-foreground'}`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 px-2">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 px-2">{msg.timestamp}</p>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Message Input */}
@@ -172,7 +322,7 @@ const Messages: React.FC = () => {
                 size="sm"
                 className="gradient-primary text-white p-2"
                 onClick={handleSendMessage}
-                disabled={!message.trim()}
+                disabled={!message.trim() || sendMessageMutation.isLoading}
                 aria-label="Send message"
               >
                 <Send className="w-4 h-4" />
@@ -184,7 +334,7 @@ const Messages: React.FC = () => {
     );
   }
 
-  // Conversations List
+  // --- CONVERSATIONS LIST VIEW ---
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-primary text-white">
@@ -212,43 +362,50 @@ const Messages: React.FC = () => {
       <div className="container-mobile py-6">
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-0">
-            {conversations.map((conversation, index) => (
-              <div
-                key={conversation.id}
-                className={`flex items-center gap-3 p-4 hover:bg-muted/50 transition-smooth cursor-pointer ${index !== conversations.length - 1 ? 'border-b border-border/50' : ''}`}
-                onClick={() => setSelectedChat(conversation)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(conversation); }}
-              >
-                <div className="relative">
-                  <Avatar className="w-12 h-12">
-                    {conversation.avatar ? <AvatarImage src={conversation.avatar} /> : (
-                      <AvatarFallback className="gradient-primary text-white">
-                        {conversation.isGroup ? 'SG' : conversation.name.split(' ').map(n => n[0]).join('').slice(0,2)}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  {conversation.online && (
-                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
+            {loadingConversations ? (
+              <div className="text-center text-muted-foreground p-8">Loading conversations...</div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="text-center text-muted-foreground p-8">No conversations yet.</div>
+            ) : (
+              filteredConversations.map((convo, index) => (
+                <div
+                  key={convo.partner_id}
+                  className={`flex items-center gap-3 p-4 hover:bg-muted/50 transition-smooth cursor-pointer ${index !== filteredConversations.length - 1 ? 'border-b border-border/50' : ''}`}
+                  onClick={() => setSelectedPartner(convo)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setSelectedPartner(convo); }}
+                >
+                  <div className="relative">
+                    <Avatar className="w-12 h-12">
+                      {convo.avatar_url ? <AvatarImage src={convo.avatar_url} /> : (
+                        <AvatarFallback className="gradient-primary text-white">
+                          {convo.display_name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    {/* TODO: Add online presence dot */}
+                    {/* <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" /> */}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-semibold truncate">{convo.display_name}</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(convo.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground truncate">{convo.last_message_content}</p>
+                  </div>
+
+                  {convo.unread_count > 0 && (
+                    <Badge className="gradient-primary text-white text-xs min-w-[1.5rem] h-6 flex items-center justify-center">
+                      {convo.unread_count}
+                    </Badge>
                   )}
                 </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-semibold truncate">{conversation.name}</h3>
-                    <span className="text-xs text-muted-foreground">{conversation.timestamp}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground truncate">{conversation.lastMessage}</p>
-                </div>
-
-                {conversation.unread > 0 && (
-                  <Badge className="gradient-primary text-white text-xs min-w-[1.5rem] h-6 flex items-center justify-center">
-                    {conversation.unread}
-                  </Badge>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
