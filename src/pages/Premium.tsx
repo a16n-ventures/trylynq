@@ -1,4 +1,4 @@
-import { useState, useEffect }</a> from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,9 +6,9 @@ import { Switch } from '@/components/ui/switch';
 import { Crown, Zap, Star, TrendingUp, ArrowLeft, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext'; // Assuming you have this
+import { useAuth } from '@/contexts/AuthContext'; 
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query'; // Import queryClient
+import { useQueryClient } from '@tanstack/react-query'; 
 
 // --- Type definitions ---
 // This allows window.FlutterwaveCheckout to be recognized by TypeScript
