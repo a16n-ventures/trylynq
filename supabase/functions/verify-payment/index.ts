@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js";
 // WARNING: This is a DANGEROUS client.
 // It has service_role privileges and can bypass RLS.
 // NEVER expose this to the client.
