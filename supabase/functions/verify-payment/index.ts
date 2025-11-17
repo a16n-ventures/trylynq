@@ -78,7 +78,7 @@ serve(async (req)=>{
     // 5. Return error to the client
     return new Response(JSON.stringify({
       status: 'error',
-      message: error.message || String(error)
+      message: error instanceof Error ? error.message : String(error)
     }), {
       headers: {
         ...corsHeaders,
