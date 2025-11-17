@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom'; // 1. Import useNavigate
 
 interface Friend {
   id: string;
@@ -25,6 +26,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState({ nearby: 0, messages: 0, events: 0 });
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const navigate = useNavigate(); // 2. Initialize useNavigate
 
   useEffect(() => {
     if (user) {
@@ -134,7 +136,7 @@ const Dashboard = () => {
                 variant="ghost" 
                 size="sm" 
                 className="text-white hover:bg-white/20 p-2"
-                onClick={() => window.location.href = '/premium'}
+                onClick={() => navigate('/premium')} // 3. FIX: Use navigate
               >
                 <Crown className="w-5 h-5" />
               </Button>
@@ -196,7 +198,8 @@ const Dashboard = () => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="heading-lg">Friends Nearby</CardTitle>
-              <Button variant="ghost" size="sm" className="text-primary" onClick={() => window.location.href = '/app/friends'}>
+              <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate('/app/friends')}> 
+                {/* 3. FIX: Use navigate */}
                 View All
               </Button>
             </div>
@@ -227,7 +230,8 @@ const Dashboard = () => {
                   </div>
                 </div>
                 
-                <Button size="sm" variant="outline" className="shrink-0" onClick={() => window.location.href = '/app/messages'}>
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => navigate('/app/messages')}> 
+                  {/* 3. FIX: Use navigate */}
                   <MessageCircle className="w-4 h-4 mr-1" />
                   Chat
                 </Button>
@@ -241,7 +245,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-2 gap-4">
           <Button 
             className="h-16 gradient-primary text-white shadow-primary hover:shadow-glow transition-smooth"
-            onClick={() => window.location.href = '/create-event'}
+            onClick={() => navigate('/create-event')} // 3. FIX: Use navigate
           >
             <Plus className="w-5 h-5 mr-2" />
             Create Event
@@ -249,7 +253,7 @@ const Dashboard = () => {
           <Button 
             variant="outline" 
             className="h-16 border-2 hover:bg-muted/50 transition-smooth"
-            onClick={() => window.location.href = '/app/map'}
+            onClick={() => navigate('/app/map')} // 3. FIX: Use navigate
           >
             <MapPin className="w-5 h-5 mr-2" />
             View Map
