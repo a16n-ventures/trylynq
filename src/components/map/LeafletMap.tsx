@@ -108,11 +108,6 @@ export default function LeafletMap({
         mapRef.current = map;
         setMapReady(true);
 
-        // Force resize after a short delay
-        setTimeout(() => {
-          map.invalidateSize();
-        }, 100);
-
       } catch (err) {
         console.error('Failed to initialize map:', err);
       }
@@ -127,7 +122,7 @@ export default function LeafletMap({
         setMapReady(false);
       }
     };
-  }, [isClient, userLocation]);
+  }, [isClient]);
 
   // Update markers when data changes
   useEffect(() => {
@@ -243,13 +238,12 @@ export default function LeafletMap({
   }
 
   return (
-    <div style={{ position: 'relative', height: '60vh', minHeight: '400px', width: '100%' }}>
+    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div
         ref={mapContainerRef}
         style={{
           height: '100%',
           width: '100%',
-          borderRadius: '12px',
           overflow: 'hidden',
           background: '#f3f4f6',
         }}
