@@ -7,12 +7,11 @@ import {
   Crosshair, 
   MapPin, 
   Search, 
-  Filter, 
+  Plus, // Changed from Filter
   Eye, 
   EyeOff, 
   Navigation,
   MessageSquare,
-  Loader2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,7 +20,6 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { Switch } from '@/components/ui/switch'; // Ensure this exists
 import LeafletMap from '@/components/map/LeafletMap';
 import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 
@@ -78,7 +76,7 @@ const Map = () => {
   const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [showContactImport, setShowContactImport] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
-  const [isGhostMode, setIsGhostMode] = useState(false); // Local state for immediate UI feedback
+  const [isGhostMode, setIsGhostMode] = useState(false); 
   
   const { user } = useAuth();
   const { location, error: locationError, loading: locationLoading } = useGeolocation();
@@ -93,7 +91,6 @@ const Map = () => {
   const fetchFriendsLocations = useCallback(async (signal?: AbortSignal) => {
     if (!user) return;
     try {
-      // A. Get Friends IDs
       const { data: friendships, error: friendshipsError } = await supabase
         .from('friendships')
         .select('requester_id, addressee_id')
@@ -111,7 +108,6 @@ const Map = () => {
         return;
       }
 
-      // B. Get Locations (Only those sharing)
       const { data: locations, error: locationsError } = await supabase
         .from('user_locations')
         .select('user_id, latitude, longitude, is_sharing_location')
@@ -120,13 +116,11 @@ const Map = () => {
 
       if (locationsError) throw locationsError;
 
-      // C. Get Profiles
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name, avatar_url')
         .in('user_id', friendIds);
 
-      // D. Merge
       const locationsWithProfiles = (locations || []).map((loc) => {
         const profile = profiles?.find((p) => p.user_id === loc.user_id);
         return {
@@ -142,25 +136,24 @@ const Map = () => {
     }
   }, [user]);
 
-  // --- 2. Toggle Ghost Mode (Mutation) ---
+  // --- 2. Toggle Ghost Mode ---
   const toggleGhostMode = async () => {
     if (!user) return;
     const newValue = !isGhostMode;
-    setIsGhostMode(newValue); // Optimistic update
+    setIsGhostMode(newValue); 
 
     try {
       const { error } = await supabase
         .from('user_locations')
         .upsert({ 
           user_id: user.id, 
-          is_sharing_location: !newValue // If ghost mode is ON, sharing is OFF
+          is_sharing_location: !newValue 
         });
 
       if (error) throw error;
-      
       toast.success(newValue ? "You are now invisible" : "You are visible on the map");
     } catch (error) {
-      setIsGhostMode(!newValue); // Revert on error
+      setIsGhostMode(!newValue); 
       toast.error("Failed to update location settings");
     }
   };
@@ -169,7 +162,6 @@ const Map = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Check my initial ghost mode status
     const checkMyStatus = async () => {
       const { data } = await supabase
         .from('user_locations')
@@ -182,14 +174,11 @@ const Map = () => {
     };
     checkMyStatus();
 
-    // Fetch Friends
     const controller = new AbortController();
     fetchFriendsLocations(controller.signal);
 
-    // Realtime Subscription
     let channel: any = null;
     (async () => {
-      // Get friend IDs first to filter subscription (optimization)
       const { data: friendships } = await supabase
         .from('friendships')
         .select('requester_id, addressee_id')
@@ -204,7 +193,6 @@ const Map = () => {
         .channel('public:user_locations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, (payload: any) => {
           const userId = payload.new?.user_id || payload.old?.user_id;
-          // Only refetch if the change belongs to a friend
           if (userId && friendIds.includes(userId)) {
             fetchFriendsLocations();
           }
@@ -218,7 +206,7 @@ const Map = () => {
     };
   }, [user, fetchFriendsLocations]);
 
-  // --- 4. Presence (Online Status) ---
+  // --- 4. Presence ---
   useEffect(() => {
     if (!user) return;
     const presenceChannel = supabase.channel('online-users', {
@@ -291,17 +279,6 @@ const Map = () => {
     });
   }, [friendsWithDistance, searchQuery]);
 
-  const getStatusBadge = (status: FriendOnMap['status']) => {
-    switch (status) {
-      case 'online':
-        return <Badge className="bg-green-500 hover:bg-green-600 text-white text-[10px] h-5">Online</Badge>;
-      case 'away':
-        return <Badge className="bg-yellow-500 text-white text-[10px] h-5">Away</Badge>;
-      default:
-        return <Badge variant="outline" className="text-[10px] h-5 text-muted-foreground">Offline</Badge>;
-    }
-  };
-
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       
@@ -309,7 +286,7 @@ const Map = () => {
       <div className="absolute inset-0 z-0">
         <LeafletMap
           ref={mapRef}
-          userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }} // Default: Lagos
+          userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
           friendsLocations={friendsLocations}
           loading={locationLoading}
           error={locationError}
@@ -317,10 +294,9 @@ const Map = () => {
       </div>
 
       {/* --- LAYER 2: UI OVERLAY --- */}
-      {/* pointer-events-none ensures clicks pass through empty spaces to the map */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* A. HEADER (Now Active) */}
+        {/* HEADER */}
         <div className="bg-gradient-to-b from-black/60 to-transparent p-4 pointer-events-auto">
           <div className="container-mobile flex items-center gap-3">
             <div className="relative flex-1">
@@ -344,25 +320,22 @@ const Map = () => {
               {isGhostMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </Button>
 
-            {/* Filter / Import */}
+            {/* Add Friend / Import (Changed to PLUS icon) */}
             <Button 
               size="icon" 
               variant="secondary" 
               className="bg-white/20 text-white border-white/30 hover:bg-white/30 rounded-full backdrop-blur-md"
               onClick={() => setShowContactImport(true)}
             >
-              <Filter className="w-4 h-4" />
+              <Plus className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
-        {/* B. SPACER (Push content down) */}
         <div className="flex-grow" />
 
-        {/* C. BOTTOM SHEET & CONTROLS */}
+        {/* BOTTOM SHEET */}
         <div className="relative pointer-events-auto pb-6">
-          
-          {/* Re-center Button */}
           {location && (
             <div className="container-mobile flex justify-end mb-4">
               <Button
@@ -415,7 +388,6 @@ const Map = () => {
                         onClick={() => {
                           const { latitude, longitude } = selectedFriend;
                           if (latitude && longitude) {
-                            // Production-ready universal maps link
                             const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
                             window.open(url, '_blank');
                           } else {
@@ -452,10 +424,7 @@ const Map = () => {
                           <div
                             key={friend.id}
                             className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                            onClick={() => {
-                                setSelectedFriend(friend);
-                                // Optionally trigger map flyTo here via ref if you add that method to LeafletMap
-                            }}
+                            onClick={() => setSelectedFriend(friend)}
                           >
                             <div className="relative">
                               <Avatar className="w-10 h-10">
@@ -490,6 +459,8 @@ const Map = () => {
         </div>
       </div>
 
+      {/* IMPORTS MODAL */}
+      {/* NOTE: You must update ContactImportModal to handle the auto-request logic */}
       <ContactImportModal 
         open={showContactImport} 
         onOpenChange={setShowContactImport} 
