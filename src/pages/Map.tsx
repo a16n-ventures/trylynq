@@ -270,7 +270,7 @@ const Map = () => {
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
         {/* A. HEADER: Top of flex, pointer-events-auto to be interactive */}
-        <div className="text-black pointer-events-auto">
+        <div className="gradient-primary text-white pointer-events-auto">
           <div className="container-mobile py-4">
             <div className="flex items-center justify-between mb-4">
               <h1 className="heading-lg text-white">Friend map</h1>
@@ -311,7 +311,7 @@ const Map = () => {
           onClick={handleRecenter}
           variant="secondary"
           size="icon"
-          className="absolute bottom-18 right-8 z-20 rounded-full shadow-lg"
+          className="absolute bottom-24 right-6 z-20 rounded-full shadow-lg"
           title="Re-center on my location"
         >
           <Crosshair className="h-5 w-5" />
