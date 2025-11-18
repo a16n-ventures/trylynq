@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Users, Calendar, MapPin, X, Loader2, AlertCircle } from "lucide-react";
 import React, { useState, useEffect } from "react";
 // Assumed Supabase client import path
-import { supabase } from "@/lib/supabase/client"; 
+import { supabase } from "@/integrations/supabase/client"; 
 // Removed dependency on auto-generated types to fix build errors
 
 // --- Type Definitions (Self-Contained) ---
