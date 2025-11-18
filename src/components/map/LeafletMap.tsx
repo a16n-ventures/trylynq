@@ -58,7 +58,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
 
   useImperativeHandle(ref, () => ({
     recenter: recenterMap,
-  )}
+  }));
 
   // Ensure we're on client side
   useEffect(() => {
@@ -297,3 +297,5 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
     </div>
   );
 }
+                                                                 
+export default LeafletMap;
