@@ -1,54 +1,62 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, MapPin, X, Loader2 } from "lucide-react";
+import { Users, Calendar, MapPin, X, Loader2, AlertCircle } from "lucide-react";
 import React, { useState, useEffect } from "react";
 // Assumed Supabase client import path
 import { supabase } from "@/lib/supabase/client"; 
+// BEST PRACTICE: Import auto-generated types from Supabase
+// (Run `npx supabase gen types typescript --project-id <your-project-id> > lib/supabase/types.ts`)
+import { Database } from "@/lib/supabase/types"; 
 
-// --- Type Definitions for Supabase Data ---
+// --- Type Definitions based on Supabase Schema ---
+// BEST PRACTICE: Use generated types for Row-level data
+type Community = Database['public']['Tables']['communities']['Row'];
+type Event = Database['public']['Tables']['events']['Row'];
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type Story = Database['public']['Tables']['stories']['Row'];
 
-// For the story tray (assumes a 'profiles' table)
-interface Profile {
-  id: string;
-  username: string;
-  avatar_url: string;
-  // Assumes you have a way to track this, e.g., a DB view or function
-  // We will query for profiles that *have* stories posted in the last 24h
-}
+// BEST PRACTICE: Create specific types for custom queries
+// This query joins profiles with stories, so we need a combined type.
+type ProfileWithStories = Pick<Profile, 'id' | 'username' | 'avatar_url'> & {
+  stories: Pick<Story, 'id' | 'created_at'>[]
+};
 
-// For the story viewer modal (assumes a 'stories' table)
-interface Story {
-  id: string;
-  media_url: string;
-  media_type: 'image' | 'video';
-  user_id: string; // Foreign key to profiles
-  created_at: string;
-}
+// --- Helper: Loading & Error Component ---
+// To avoid repeating loader/error logic
+const DataFeedback: React.FC<{
+  isLoading: boolean;
+  error: string | null;
+  loadingText?: string;
+  errorText?: string;
+  children: React.ReactNode;
+}> = ({ isLoading, error, loadingText = "Loading...", errorText = "Could not load data.", children }) => {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 text-muted-foreground py-4">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span>{loadingText}</span>
+      </div>
+    );
+  }
 
-// For the Communities tab
-interface Community {
-  id: string;
-  name: string;
-  member_count: number;
-  description: string;
-  avatar_url: string | null;
-}
+  if (error) {
+    return (
+      <div className="flex items-center justify-center gap-2 text-destructive py-4">
+        <AlertCircle className="w-4 h-4" />
+        <span>{errorText}</span>
+      </div>
+    );
+  }
 
-// For the Events tab
-interface Event {
-  id: string;
-  name: string;
-  event_date: string; // ISO timestamp string
-  location: string;
-}
+  return <>{children}</>;
+};
 
 
-// --- Story Viewer Component ---
-// To provide the "full functionality" of viewing a story
+// --- Story Viewer Component (Fixed) ---
 
 interface StoryViewerProps {
-  user: Profile;
+  user: Profile; // The Profile type is sufficient here
   onClose: () => void;
 }
 
@@ -56,22 +64,27 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
   const [stories, setStories] = useState<Story[]>([]);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch all active stories for this user
   useEffect(() => {
     async function fetchUserStories() {
       setLoading(true);
+      setError(null);
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+      // BEST PRACTICE: Select only the columns you need.
       const { data, error } = await supabase
         .from('stories')
-        .select('*')
+        .select('id, media_url, media_type, created_at') // Was select('*')
         .eq('user_id', user.id)
         .gte('created_at', oneDayAgo)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .returns<Story[]>(); // BEST PRACTICE: Use .returns() for type safety
 
       if (error) {
         console.error('Error fetching stories:', error);
+        setError(error.message);
       } else if (data) {
         setStories(data);
       }
@@ -99,16 +112,25 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
         <X className="w-8 h-8" />
       </button>
 
+      {/* BEST PRACTICE: Handle loading and error states explicitly */}
       {loading && <Loader2 className="w-10 h-10 text-white animate-spin" />}
       
-      {!loading && stories.length === 0 && (
+      {error && (
+         <div className="text-white text-center">
+          <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-2" />
+          <p>Could not load stories.</p>
+          <Button onClick={onClose} variant="outline" className="mt-4">Close</Button>
+        </div>
+      )}
+
+      {!loading && !error && stories.length === 0 && (
         <div className="text-white text-center">
           <p>No active stories for this user.</p>
           <Button onClick={onClose} variant="outline" className="mt-4">Close</Button>
         </div>
       )}
 
-      {!loading && currentStory && (
+      {!loading && !error && currentStory && (
         <div className="relative w-full max-w-md h-[90vh] bg-black rounded-lg overflow-hidden">
           {/* Story Content */}
           <div className="absolute inset-0 flex items-center justify-center">
@@ -134,7 +156,7 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
           {/* User Info */}
           <div className="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/50 to-transparent">
             <div className="flex items-center gap-2">
-              <img src={user.avatar_url} alt={user.username} className="w-10 h-10 rounded-full border-2 border-white object-cover" />
+              <img src={user.avatar_url ?? '/default-avatar.png'} alt={user.username ?? 'User'} className="w-10 h-10 rounded-full border-2 border-white object-cover" />
               <span className="text-white font-semibold">{user.username}</span>
             </div>
           </div>
@@ -149,21 +171,32 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
 }
 
 
-// --- Main Discover Component ---
+// --- Main Discover Component (Fixed) ---
 
 export default function Discover() {
+  // State for data
   const [storyUsers, setStoryUsers] = useState<Profile[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedStoryUser, setSelectedStoryUser] = useState<Profile | null>(null);
 
+  // BEST PRACTICE: Separate loading and error states for each data source
+  const [storyLoading, setStoryLoading] = useState(true);
+  const [storyError, setStoryError] = useState<string | null>(null);
+  
+  const [communityLoading, setCommunityLoading] = useState(true);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventError, setEventError] = useState<string | null>(null);
+
   useEffect(() => {
     // Fetch users who have active stories
     async function fetchStoryUsers() {
+      setStoryLoading(true);
+      setStoryError(null);
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       
-      // Query profiles that have at least one story (using inner join)
-      // created in the last 24 hours.
       const { data, error } = await supabase
         .from('profiles')
         .select(`
@@ -173,43 +206,58 @@ export default function Discover() {
           stories!inner (id, created_at)
         `)
         .filter('stories.created_at', 'gte', oneDayAgo)
-        .limit(15);
+        .limit(15)
+        // BEST PRACTICE: Use .returns() to get strong type checking
+        .returns<ProfileWithStories[]>();
 
       if (error) {
         console.error('Error fetching story users:', error);
+        setStoryError(error.message);
       } else if (data) {
-        // We only need profile data, not the nested stories here
-        setStoryUsers(data as Profile[]);
+        setStoryUsers(data); // Data is now correctly typed
       }
+      setStoryLoading(false);
     }
 
     // Fetch communities
     async function fetchCommunities() {
+      setCommunityLoading(true);
+      setCommunityError(null);
+      // BEST PRACTICE: Select only the columns you need
       const { data, error } = await supabase
         .from('communities')
-        .select('*')
-        .limit(10); // Example limit
+        .select('id, name, member_count, description, avatar_url') // Was select('*')
+        .limit(10)
+        .returns<Community[]>(); // BEST PRACTICE: Use .returns()
 
       if (error) {
         console.error('Error fetching communities:', error);
+        setCommunityError(error.message);
       } else if (data) {
         setCommunities(data);
       }
+      setCommunityLoading(false);
     }
 
     // Fetch events
     async function fetchEvents() {
+      setEventLoading(true);
+      setEventError(null);
+      // BEST PRACTICE: Select only the columns you need
       const { data, error } = await supabase
         .from('events')
-        .select('*')
+        .select('id, name, event_date, location') // Was select('*')
         .order('event_date', { ascending: true })
-        .limit(10); // Example limit
+        .limit(10)
+        .returns<Event[]>(); // BEST PRACTICE: Use .returns()
 
       if (error) {
         console.error('Error fetching events:', error);
+        setEventError(error.message);
       } else if (data) {
         setEvents(data);
       }
+      setEventLoading(false);
     }
 
     fetchStoryUsers();
@@ -226,7 +274,9 @@ export default function Discover() {
   };
 
   // Helper to format event date
-  const formatEventDate = (dateString: string) => {
+  const formatEventDate = (dateString: string | null) => {
+    // BEST PRACTICE: Handle potential null values from DB
+    if (!dateString) return { month: '???', day: '??', fullDate: 'Date not specified' };
     const date = new Date(dateString);
     const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
     const day = date.getDate();
@@ -241,30 +291,41 @@ export default function Discover() {
   return (
     <>
       <div className="container-mobile py-4 space-y-4">
-        {/* --- Story Tray Feature --- */}
+        {/* --- Story Tray Feature (with loading/error) --- */}
         <div className="w-full overflow-x-auto pb-2 -mt-2">
-          <div className="flex gap-4 px-1">
-            {storyUsers.map((user) => (
-              <div
-                key={user.id}
-                className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0"
-                onClick={() => openStory(user)}
-              >
-                <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
-                  <div className="w-full h-full rounded-full bg-background p-0.5">
-                    <img
-                      src={user.avatar_url}
-                      alt={user.username}
-                      className="w-full h-full rounded-full object-cover"
-                    />
+          <DataFeedback
+            isLoading={storyLoading}
+            error={storyError}
+            loadingText="Loading stories..."
+            errorText="Could not load stories."
+          >
+            <div className="flex gap-4 px-1">
+              {storyUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0"
+                  onClick={() => openStory(user)}
+                >
+                  <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
+                    <div className="w-full h-full rounded-full bg-background p-0.5">
+                      <img
+                        // BEST PRACTICE: Handle potential null values for avatar
+                        src={user.avatar_url ?? '/default-avatar.png'} // Add a fallback avatar
+                        alt={user.username ?? 'User'}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    </div>
                   </div>
+                  <span className="text-xs font-medium max-w-16 truncate">
+                    {user.username}
+                  </span>
                 </div>
-                <span className="text-xs font-medium max-w-16 truncate">
-                  {user.username}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            {!storyLoading && !storyError && storyUsers.length === 0 && (
+              <div className="text-sm text-muted-foreground px-1">No active stories right now.</div>
+            )}
+          </DataFeedback>
         </div>
 
         {/* --- Original Content --- */}
@@ -276,64 +337,80 @@ export default function Discover() {
             <TabsTrigger value="events">Events</TabsTrigger>
           </TabsList>
 
-          {/* --- Communities Tab (Live Data) --- */}
+          {/* --- Communities Tab (Live Data + Load/Error) --- */}
           <TabsContent value="communities" className="space-y-3 mt-4">
-            {communities.length === 0 && <p className="text-muted-foreground text-sm">No communities found.</p>}
-            
-            {communities.map((community) => (
-              <Card key={community.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      {community.avatar_url ? (
-                         <img src={community.avatar_url} alt={community.name} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        <Users className="w-6 h-6 text-primary" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{community.name}</h3>
-                      <p className="text-sm text-muted-foreground">{community.member_count} members</p>
-                      <p className="text-sm mt-1">{community.description}</p>
-                    </div>
-                    <Button size="sm">Join</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
-
-          {/* --- Events Tab (Live Data) --- */}
-          <TabsContent value="events" className="space-y-3 mt-4">
-            {events.length === 0 && <p className="text-muted-foreground text-sm">No events found.</p>}
-
-            {events.map((event) => {
-              const { month, day, fullDate } = formatEventDate(event.event_date);
-              return (
-                <Card key={event.id}>
+            <DataFeedback
+              isLoading={communityLoading}
+              error={communityError}
+              loadingText="Loading communities..."
+              errorText="Could not load communities."
+            >
+              {communities.length === 0 && (
+                <p className="text-muted-foreground text-sm text-center py-4">No communities found.</p>
+              )}
+              {communities.map((community) => (
+                <Card key={community.id}>
                   <CardContent className="p-4">
-                    <div className="flex gap-3">
-                      <div className="w-16 h-16 rounded-lg bg-gradient-primary flex flex-col items-center justify-center text-white flex-shrink-0">
-                        <div className="text-xs font-medium">{month}</div>
-                        <div className="text-2xl font-bold">{day}</div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        {community.avatar_url ? (
+                          <img src={community.avatar_url} alt={community.name} className="w-full h-full rounded-full object-cover" />
+                        ) : (
+                          <Users className="w-6 h-6 text-primary" />
+                        )}
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold">{event.name}</h3>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>{fullDate}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <MapPin className="w-4 h-4" />
-                          <span>{event.location}</span>
-                        </div>
+                        <h3 className="font-semibold">{community.name}</h3>
+                        <p className="text-sm text-muted-foreground">{community.member_count} members</p>
+                        <p className="text-sm mt-1">{community.description}</p>
                       </div>
-                      <Button size="sm" variant="outline">View</Button>
+                      <Button size="sm">Join</Button>
                     </div>
                   </CardContent>
                 </Card>
-              );
-            })}
+              ))}
+            </DataFeedback>
+          </TabsContent>
+
+          {/* --- Events Tab (Live Data + Load/Error) --- */}
+          <TabsContent value="events" className="space-y-3 mt-4">
+            <DataFeedback
+              isLoading={eventLoading}
+              error={eventError}
+              loadingText="Loading events..."
+              errorText="Could not load events."
+            >
+              {events.length === 0 && (
+                <p className="text-muted-foreground text-sm text-center py-4">No events found.</p>
+              )}
+              {events.map((event) => {
+                const { month, day, fullDate } = formatEventDate(event.event_date);
+                return (
+                  <Card key={event.id}>
+                    <CardContent className="p-4">
+                      <div className="flex gap-3">
+                        <div className="w-16 h-16 rounded-lg bg-gradient-primary flex flex-col items-center justify-center text-white flex-shrink-0">
+                          <div className="text-xs font-medium">{month}</div>
+                          <div className="text-2xl font-bold">{day}</div>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold">{event.name}</h3>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                            <Calendar className="w-4 h-4" />
+                            <span>{fullDate}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <MapPin className="w-4 h-4" />
+                            <span>{event.location}</span>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline">View</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </DataFeedback>
           </TabsContent>
         </Tabs>
       </div>
