@@ -264,41 +264,8 @@ const Map = () => {
           loading={locationLoading}
           error={locationError}
         />
-      </div>
-
-      {/* 3. UI OVERLAY (z-10): Sits on top, flex-col layout, pointer-events-none to allow map clicks */}
-      <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
+      </div> 
         
-        {/* A. HEADER: Top of flex, pointer-events-auto to be interactive */}
-        <div className="gradient-primary text-white pointer-events-auto">
-          <div className="container-mobile py-4">
-            <div className="flex items-center justify-between mb-4">
-              <h1 className="heading-lg text-white">Friend map</h1>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2" onClick={() => setShowContactImport(true)}>
-                  <UserPlus className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
-                  <Filter className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 p-2">
-                  <Users className="w-5 h-5" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
-              <Input
-                placeholder="Search friends or locations..."
-                className="pl-10 bg-white/20 border-white/30 text-white placeholder:text-white/70"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
         {/* B. SPACER: Pushes the bottom content down */}
         <div className="flex-grow" />
 
@@ -311,7 +278,7 @@ const Map = () => {
           onClick={handleRecenter}
           variant="secondary"
           size="icon"
-          className="absolute bottom-24 right-6 z-20 rounded-full shadow-lg"
+          className="absolute bottom-15 right-8 top-15 z-20 rounded-full shadow-lg"
           title="Re-center on my location"
         >
           <Crosshair className="h-5 w-5" />
