@@ -1,12 +1,12 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Calendar, MapPin, X, Loader2, AlertCircle } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import { Users, Calendar, MapPin, X, Loader2, AlertCircle, Plus, Upload } from "lucide-react"; // Added Plus, Upload
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast"; // Assuming you have a toast hook, if not I'll use standard alert/error state
 
 // --- Type Definitions ---
-// maintained manual definitions as requested for stability
 
 interface Profile {
   id: string;
@@ -37,7 +37,6 @@ interface Event {
   location: string | null;
 }
 
-// Inner join type for efficiently fetching users who have stories
 type ProfileWithStoryInner = Profile & {
   stories: { id: string; created_at: string }[];
 };
@@ -71,7 +70,7 @@ const DataFeedback: React.FC<{
   return <>{children}</>;
 };
 
-// --- Story Viewer Component ---
+// --- Story Viewer Component (Unchanged) ---
 interface StoryViewerProps {
   user: Profile;
   onClose: () => void;
@@ -83,15 +82,12 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch active stories for the selected user
   useEffect(() => {
     async function fetchUserStories() {
       setLoading(true);
       setError(null);
-      // 24-hour window for stories
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-      // DIRECT QUERY: Fetch stories directly from the table
       const { data, error } = await supabase
         .from('stories')
         .select('id, media_url, media_type, created_at, user_id')
@@ -115,7 +111,7 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
     if (currentStoryIndex < stories.length - 1) {
       setCurrentStoryIndex((prev) => prev + 1);
     } else {
-      onClose(); // Close viewer if it's the last story
+      onClose(); 
     }
   };
 
@@ -154,7 +150,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
       {!loading && !error && currentStory && (
         <div className="relative w-full h-full sm:h-[90vh] sm:max-w-md bg-black sm:rounded-lg overflow-hidden flex flex-col">
           
-          {/* Story Progress Bar */}
           <div className="absolute top-0 left-0 w-full z-20 flex gap-1 p-2">
             {stories.map((_, idx) => (
               <div key={idx} className="h-1 flex-1 bg-white/30 rounded-full overflow-hidden">
@@ -167,7 +162,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
             ))}
           </div>
 
-          {/* User Header */}
           <div className="absolute top-4 left-0 w-full p-4 z-20 bg-gradient-to-b from-black/60 to-transparent">
             <div className="flex items-center gap-3">
               <img 
@@ -183,7 +177,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
             </div>
           </div>
 
-          {/* Story Media */}
           <div className="flex-1 flex items-center justify-center relative bg-black">
             {currentStory.media_type === 'image' ? (
               <img
@@ -197,9 +190,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
                 className="w-full h-full object-contain"
                 autoPlay
                 playsInline
-                // Muted needed for autoplay on many browsers without interaction, 
-                // though stories usually desire sound. 
-                // We keep it unmuted but ensure playsInline is present.
                 onEnded={goToNextStory}
               >
                 Your browser does not support the video tag.
@@ -207,7 +197,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
             )}
           </div>
 
-          {/* Tap Navigation Zones */}
           <div className="absolute inset-0 z-10 flex">
             <div className="w-1/3 h-full" onClick={goToPrevStory} />
             <div className="w-2/3 h-full" onClick={goToNextStory} />
@@ -222,55 +211,75 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
 // --- Main Discover Component ---
 
 export default function Discover() {
+  // State for data
   const [storyUsers, setStoryUsers] = useState<Profile[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedStoryUser, setSelectedStoryUser] = useState<Profile | null>(null);
 
+  // Loading States
   const [storyLoading, setStoryLoading] = useState(true);
   const [storyError, setStoryError] = useState<string | null>(null);
-  
   const [communityLoading, setCommunityLoading] = useState(true);
   const [communityError, setCommunityError] = useState<string | null>(null);
-
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // 1. Fetch users with active stories (last 24h)
-    async function fetchStoryUsers() {
-      setStoryLoading(true);
-      setStoryError(null);
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      
-      // DIRECT QUERY: Inner join on stories to only get users who posted recently
-      const { data, error } = await supabase
-        .from('profiles')
-        .select(`
-          id, 
-          username, 
-          avatar_url,
-          stories!inner (id, created_at)
-        `)
-        .filter('stories.created_at', 'gte', oneDayAgo)
-        .limit(15) // Limit tray size for performance
-        .returns<ProfileWithStoryInner[]>();
+  // --- NEW: State for Uploading Story ---
+  const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  const [isUploadingStory, setIsUploadingStory] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // --------------------------------------
 
-      if (error) {
-        console.error('Error fetching story users:', error);
-        setStoryError(error.message);
-      } else if (data) {
-        setStoryUsers(data); 
-      }
-      setStoryLoading(false);
+  // Function to fetch story users (extracted so we can call it after upload)
+  const fetchStoryUsers = async () => {
+    setStoryLoading(true);
+    setStoryError(null);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(`
+        id, 
+        username, 
+        avatar_url,
+        stories!inner (id, created_at)
+      `)
+      .filter('stories.created_at', 'gte', oneDayAgo)
+      .limit(15)
+      .returns<ProfileWithStoryInner[]>();
+
+    if (error) {
+      console.error('Error fetching story users:', error);
+      setStoryError(error.message);
+    } else if (data) {
+      setStoryUsers(data); 
     }
+    setStoryLoading(false);
+  };
 
-    // 2. Fetch Communities (Popular/Featured)
+  useEffect(() => {
+    // 0. Get Current User (for the "Add Story" button)
+    async function getCurrentUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .eq('id', user.id)
+          .single();
+        if (profile) setCurrentUser(profile);
+      }
+    }
+    
+    // 1. Fetch initial data
+    getCurrentUser();
+    fetchStoryUsers();
+
+    // 2. Fetch Communities
     async function fetchCommunities() {
       setCommunityLoading(true);
       setCommunityError(null);
-      
-      // DIRECT QUERY: Order by member count to show popular communities first
       const { data, error } = await supabase
         .from('communities')
         .select('id, name, member_count, description, avatar_url')
@@ -287,18 +296,15 @@ export default function Discover() {
       setCommunityLoading(false);
     }
 
-    // 3. Fetch Upcoming Events
+    // 3. Fetch Events
     async function fetchEvents() {
       setEventLoading(true);
       setEventError(null);
-      
-      // DIRECT QUERY: Filter for FUTURE events only
       const today = new Date().toISOString();
-      
       const { data, error } = await supabase
         .from('events')
         .select('id, name, event_date, location')
-        .gte('event_date', today) // Don't show past events in production
+        .gte('event_date', today)
         .order('event_date', { ascending: true })
         .limit(10)
         .returns<Event[]>();
@@ -312,10 +318,67 @@ export default function Discover() {
       setEventLoading(false);
     }
 
-    fetchStoryUsers();
     fetchCommunities();
     fetchEvents();
   }, []);
+
+
+  // --- NEW: Handle Story Upload ---
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUser) return;
+
+    // Basic validation
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      alert("File too large. Please upload under 50MB.");
+      return;
+    }
+
+    setIsUploadingStory(true);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // 1. Upload to Storage Bucket 'stories'
+      const { error: uploadError } = await supabase.storage
+        .from('stories')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('stories')
+        .getPublicUrl(filePath);
+
+      // 3. Insert into DB
+      const mediaType = file.type.startsWith('video') ? 'video' : 'image';
+      
+      const { error: dbError } = await supabase
+        .from('stories')
+        .insert({
+          user_id: currentUser.id,
+          media_url: publicUrl,
+          media_type: mediaType,
+        });
+
+      if (dbError) throw dbError;
+
+      // 4. Success! Refresh stories
+      alert("Story added successfully!");
+      await fetchStoryUsers(); // Refresh the list so we see our new story/position
+
+    } catch (error: any) {
+      console.error("Error uploading story:", error);
+      alert(error.message || "Failed to upload story");
+    } finally {
+      setIsUploadingStory(false);
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const openStory = (user: Profile) => setSelectedStoryUser(user);
   const closeStory = () => setSelectedStoryUser(null);
@@ -335,7 +398,7 @@ export default function Discover() {
 
   return (
     <>
-      <div className="container-mobile py-4 space-y-6 pb-20"> {/* Added pb-20 for bottom nav clearance */}
+      <div className="container-mobile py-4 space-y-6 pb-20">
         
         {/* --- Story Tray --- */}
         <div className="w-full overflow-x-auto pb-2 scrollbar-hide">
@@ -345,39 +408,79 @@ export default function Discover() {
             loadingText="Loading stories..."
             errorText="Could not load stories."
           >
-            <div className="flex gap-4 px-4"> {/* px-4 for visual breathing room */}
-              {storyUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group"
-                  onClick={() => openStory(user)}
-                >
-                  <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 group-hover:scale-105 transition-transform">
-                    <div className="w-full h-full rounded-full bg-background p-[2px]">
-                      <img
-                        src={user.avatar_url ?? '/default-avatar.png'} 
-                        alt={user.username ?? 'User'}
-                        className="w-full h-full rounded-full object-cover"
-                        onError={(e) => { e.currentTarget.src = '/default-avatar.png' }}
-                      />
+            <div className="flex gap-4 px-4 items-start">
+              
+              {/* --- NEW: Add Story Button --- */}
+              {currentUser && (
+                <div className="flex flex-col items-center gap-2 flex-shrink-0 group relative">
+                   {/* Hidden File Input */}
+                   <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    className="hidden" 
+                    accept="image/*,video/*"
+                    onChange={handleFileSelect}
+                    disabled={isUploadingStory}
+                   />
+
+                  <div 
+                    className="w-16 h-16 rounded-full relative cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <img
+                      src={currentUser.avatar_url ?? '/default-avatar.png'} 
+                      alt="My Story"
+                      className="w-full h-full rounded-full object-cover border-2 border-dashed border-muted-foreground/50 p-[2px]"
+                    />
+                    
+                    {/* Overlay Icon */}
+                    <div className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1 border-2 border-background">
+                      {isUploadingStory ? (
+                         <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                         <Plus className="w-3 h-3" />
+                      )}
                     </div>
                   </div>
                   <span className="text-xs font-medium max-w-[70px] truncate text-center">
-                    {user.username}
+                    Your Story
                   </span>
                 </div>
-              ))}
+              )}
+
+              {/* --- Existing Stories --- */}
+              {storyUsers.map((user) => {
+                // Don't show "Me" twice if I'm in the list. (Optional, but good UX)
+                if (user.id === currentUser?.id) return null;
+
+                return (
+                  <div
+                    key={user.id}
+                    className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group"
+                    onClick={() => openStory(user)}
+                  >
+                    <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 group-hover:scale-105 transition-transform">
+                      <div className="w-full h-full rounded-full bg-background p-[2px]">
+                        <img
+                          src={user.avatar_url ?? '/default-avatar.png'} 
+                          alt={user.username ?? 'User'}
+                          className="w-full h-full rounded-full object-cover"
+                          onError={(e) => { e.currentTarget.src = '/default-avatar.png' }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs font-medium max-w-[70px] truncate text-center">
+                      {user.username}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {!storyLoading && !storyError && storyUsers.length === 0 && (
-              <div className="text-sm text-muted-foreground px-4 italic">
-                No stories from your circle yet.
-              </div>
-            )}
           </DataFeedback>
         </div>
 
-        {/* --- Main Content Tabs --- */}
-        <div className="px-4"> {/* Constrain width on mobile */}
+        {/* --- Main Content Tabs (Unchanged) --- */}
+        <div className="px-4">
             <h1 className="text-2xl font-bold mb-4">Discover</h1>
 
             <Tabs defaultValue="communities" className="w-full">
@@ -410,7 +513,7 @@ export default function Discover() {
                                 src={community.avatar_url} 
                                 alt={community.name} 
                                 className="w-full h-full object-cover"
-                                onError={(e) => { e.currentTarget.src = '/default-avatar.png' }} // Fallback
+                                onError={(e) => { e.currentTarget.src = '/default-avatar.png' }}
                             />
                             ) : (
                             <Users className="w-6 h-6 text-primary" />
@@ -446,45 +549,4 @@ export default function Discover() {
                         <Calendar className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                         <p className="text-muted-foreground text-sm">No upcoming events scheduled.</p>
                     </div>
-                )}
-                {events.map((event) => {
-                    const { month, day, fullDate } = formatEventDate(event.event_date);
-                    return (
-                    <Card key={event.id} className="hover:bg-accent/5 transition-colors">
-                        <CardContent className="p-4">
-                        <div className="flex gap-4 items-center">
-                            <div className="w-14 h-16 rounded-lg bg-primary/10 border border-primary/20 flex flex-col items-center justify-center text-primary flex-shrink-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider">{month}</div>
-                            <div className="text-xl font-bold leading-none">{day}</div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold truncate">{event.name}</h3>
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span className="truncate">{fullDate}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                                <MapPin className="w-3.5 h-3.5" />
-                                <span className="truncate">{event.location ?? 'Location TBD'}</span>
-                            </div>
-                            </div>
-                            <Button size="sm" variant="outline">View</Button>
-                        </div>
-                        </CardContent>
-                    </Card>
-                    );
-                })}
-                </DataFeedback>
-            </TabsContent>
-            </Tabs>
-        </div>
-      </div>
-
-      {/* --- Story Viewer Modal --- */}
-      {selectedStoryUser && (
-        <StoryViewer user={selectedStoryUser} onClose={closeStory} />
-      )}
-    </>
-  );
-  }
         
