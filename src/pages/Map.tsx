@@ -285,7 +285,7 @@ const Map = () => {
               onClick={handleRecenter}
               variant="secondary"
               size="icon"
-              className="absolute right-8 -top-25 z-20 rounded-full shadow-lg"
+              className="absolute right-8 -top-45 z-20 rounded-full shadow-lg"
               title="Re-center on my location"
             >
               <Crosshair className="h-5 w-5" />
