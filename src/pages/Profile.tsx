@@ -5,18 +5,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider'; // Make sure you have this component
 import { 
-  Settings, 
   Edit3, 
   MapPin, 
   Users, 
   Camera, 
   Bell, 
-  Shield, 
   LogOut, 
   Crown, 
   Trash2,
-  Loader2 
+  Loader2,
+  Gift,
+  Copy,
+  Radar
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,8 +46,10 @@ interface ProfileData {
   created_at: string;
   preferences?: {
     notifications: boolean;
+    discovery_radius?: number; // Added Discovery Radius
   };
 }
+// ... (Other types remain same) ...
 interface LocationData {
   is_sharing_location: boolean;
 }
@@ -62,34 +66,11 @@ interface CombinedProfile {
 
 // --- Helper: Data Fetching Function ---
 const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
-  const profileQuery = supabase
-    .from('profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-    
-  const locationQuery = supabase
-    .from('user_locations')
-    .select('is_sharing_location')
-    .eq('user_id', userId)
-    .single();
-
-  // Count queries - using count: 'exact', head: true for performance
-  const friendQuery = supabase
-    .from('friendships')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'accepted')
-    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-
-  const eventQuery = supabase
-    .from('event_attendees')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId);
-
-  const messageQuery = supabase
-    .from('messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('sender_id', userId);
+  const profileQuery = supabase.from('profiles').select('*').eq('user_id', userId).single();
+  const locationQuery = supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).single();
+  const friendQuery = supabase.from('friendships').select('*', { count: 'exact', head: true }).eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  const eventQuery = supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+  const messageQuery = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId);
 
   const [
     { data: profileData, error: profileError },
@@ -99,7 +80,6 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
     { count: messageCount, error: messageError },
   ] = await Promise.all([profileQuery, locationQuery, friendQuery, eventQuery, messageQuery]);
 
-  // Handle errors smoothly - create profile if missing (rare edge case)
   if (profileError && profileError.code !== 'PGRST116') throw profileError;
   
   return {
@@ -123,6 +103,9 @@ const Profile = () => {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  
+  // New State for Discovery Radius (Default 5000m / 5km)
+  const [discoveryRadius, setDiscoveryRadius] = useState([5000]); 
 
   // --- Data Fetching ---
   const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
@@ -139,18 +122,25 @@ const Profile = () => {
     if (profile) {
       setDisplayName(profile.display_name || '');
       setBio(profile.bio || '');
+      // Set radius from preferences, or default to 5000
+      setDiscoveryRadius([profile.preferences?.discovery_radius || 5000]);
     }
   }, [profile]);
 
   // --- Mutations ---
 
-  // 1. Update Text & Preferences
+  // 1. Update Text & Preferences (Radius & Notifications)
   const updateProfileMutation = useMutation({
     mutationFn: async (updates: { displayName?: string; bio?: string; preferences?: any }) => {
+      // We need to merge existing preferences with new ones
+      const currentPrefs = profile?.preferences || {};
+      const newPrefs = { ...currentPrefs, ...updates.preferences };
+
       const { error } = await supabase
         .from('profiles')
         .update({
           ...updates,
+          preferences: newPrefs,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', user!.id);
@@ -167,12 +157,10 @@ const Profile = () => {
   // 2. Toggle Location
   const toggleLocationMutation = useMutation({
     mutationFn: async (checked: boolean) => {
-      // Upsert ensures row exists if it's a new user
       const { error } = await supabase
         .from('user_locations')
         .upsert({ user_id: user!.id, is_sharing_location: checked })
         .select();
-        
       if (error) throw error;
       return checked;
     },
@@ -190,22 +178,18 @@ const Profile = () => {
   const uploadAvatarMutation = useMutation({
     mutationFn: async (file: File) => {
       const fileExt = file.name.split('.').pop();
-      // Use timestamp to avoid cache issues
       const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
 
-      // 1. Upload
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
-      // 3. Update Profile
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
@@ -216,7 +200,7 @@ const Profile = () => {
     },
     onSuccess: (url) => {
       toast.success('Avatar updated!');
-      setAvatarPreview(null); // Clear preview, let the real URL take over
+      setAvatarPreview(null); 
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
     onError: (error: Error) => toast.error('Upload failed: ' + error.message)
@@ -225,9 +209,7 @@ const Profile = () => {
   // 4. Delete Account
   const deleteAccountMutation = useMutation({
     mutationFn: async () => {
-      // In Supabase, usually you call an Edge Function to delete the user from Auth + Database
-      // For this snippet, we'll do a soft delete or sign out + toast
-      const { error } = await supabase.rpc('delete_user'); // You need to create this RPC or use Edge Function
+      const { error } = await supabase.rpc('delete_user'); 
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -243,10 +225,8 @@ const Profile = () => {
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
-      // Create local preview
       const objectUrl = URL.createObjectURL(file);
       setAvatarPreview(objectUrl);
-      // Trigger upload
       uploadAvatarMutation.mutate(file);
     }
   };
@@ -254,6 +234,22 @@ const Profile = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  const copyReferralCode = () => {
+    // Simple referral code logic using user ID
+    const code = `LYNQ-${user?.id.slice(0, 6).toUpperCase()}`;
+    navigator.clipboard.writeText(`Join me on Lynq! Use my code: ${code}`);
+    toast.success("Referral link copied!");
+  };
+
+  // Debounced save for slider
+  const handleRadiusChange = (value: number[]) => {
+    setDiscoveryRadius(value);
+  };
+
+  const saveRadius = () => {
+    updateProfileMutation.mutate({ preferences: { discovery_radius: discoveryRadius[0] } });
   };
 
   const statsList = [
@@ -291,14 +287,12 @@ const Profile = () => {
           <div className="flex items-center gap-5">
             <div className="relative group">
               <Avatar className="w-24 h-24 border-4 border-white/20 shadow-xl">
-                {/* Use preview if available, otherwise db url, otherwise fallback */}
                 <AvatarImage src={avatarPreview || profile?.avatar_url || ''} className="object-cover" />
                 <AvatarFallback className="bg-white/20 text-white text-3xl font-medium">
                   {displayName.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               
-              {/* Upload Button Overlay */}
               <label 
                 htmlFor="avatar-upload" 
                 className="absolute bottom-0 right-0 w-8 h-8 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform"
@@ -359,6 +353,28 @@ const Profile = () => {
           })}
         </div>
 
+        {/* Referral Card (NEW) */}
+        <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-0 shadow-md">
+          <CardContent className="p-4 flex items-center justify-between">
+             <div>
+               <div className="flex items-center gap-2 mb-1">
+                 <Gift className="w-4 h-4" />
+                 <h3 className="font-bold">Refer & Earn</h3>
+               </div>
+               <p className="text-xs text-white/80">Invite friends, get premium perks.</p>
+             </div>
+             <Button 
+               size="sm" 
+               variant="secondary" 
+               className="text-indigo-600"
+               onClick={copyReferralCode}
+             >
+               <Copy className="w-3 h-3 mr-2" />
+               Copy Code
+             </Button>
+          </CardContent>
+        </Card>
+
         {/* Bio Section */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
@@ -397,6 +413,39 @@ const Profile = () => {
           <h3 className="text-sm font-semibold text-muted-foreground ml-1">PREFERENCES</h3>
           <Card className="border-0 shadow-sm overflow-hidden">
              <div className="divide-y divide-border/50">
+               
+               {/* Discovery Radius (NEW) */}
+               <div className="p-4 space-y-3">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+                        <Radar className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">Discovery Radius</div>
+                        <div className="text-xs text-muted-foreground">
+                           Discover people within <span className="font-bold text-primary">{discoveryRadius[0]}m</span>
+                        </div>
+                      </div>
+                    </div>
+                 </div>
+                 <div className="pt-2 px-1">
+                    <Slider 
+                      value={discoveryRadius} 
+                      onValueChange={handleRadiusChange} 
+                      onValueCommit={saveRadius}
+                      max={20000} 
+                      step={100}
+                      className="cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                      <span>0m</span>
+                      <span>20km</span>
+                    </div>
+                 </div>
+               </div>
+
+               {/* Location Toggle */}
                <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
                  <div className="flex items-center gap-3">
                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
@@ -414,6 +463,7 @@ const Profile = () => {
                  />
                </div>
 
+               {/* Notifications */}
                <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
                  <div className="flex items-center gap-3">
                    <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
@@ -430,6 +480,7 @@ const Profile = () => {
                  />
                </div>
                
+               {/* Premium */}
                <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors cursor-pointer" onClick={() => navigate('/premium')}>
                  <div className="flex items-center gap-3">
                    <div className="w-8 h-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center">
@@ -448,7 +499,7 @@ const Profile = () => {
           </Card>
         </div>
 
-        {/* Danger Zone / Account Actions */}
+        {/* Danger Zone */}
         <div className="space-y-3 pb-8">
           <h3 className="text-sm font-semibold text-muted-foreground ml-1">ACCOUNT</h3>
           <Card className="border-0 shadow-sm overflow-hidden">
@@ -464,36 +515,4 @@ const Profile = () => {
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <div className="p-4 flex items-center gap-3 cursor-pointer hover:bg-red-50 text-red-600 transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                    <span className="text-sm font-medium">Delete Account</span>
-                  </div>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete your account
-                      and remove your data from our servers.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      className="bg-red-600 hover:bg-red-700 text-white"
-                      onClick={() => deleteAccountMutation.mutate()}
-                    >
-                      Delete Account
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default Profile;
-  
+                    <Trash2 className
