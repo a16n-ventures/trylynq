@@ -296,6 +296,6 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
       )}
     </div>
   );
-}
+});
                                                                  
 export default LeafletMap;
