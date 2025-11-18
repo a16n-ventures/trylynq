@@ -549,4 +549,45 @@ export default function Discover() {
                         <Calendar className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                         <p className="text-muted-foreground text-sm">No upcoming events scheduled.</p>
                     </div>
-        
+                )}
+                {events.map((event) => {
+                    const { month, day, fullDate } = formatEventDate(event.event_date);
+                    return (
+                    <Card key={event.id} className="hover:bg-accent/5 transition-colors">
+                        <CardContent className="p-4">
+                        <div className="flex gap-4 items-center">
+                            <div className="w-14 h-16 rounded-lg bg-primary/10 border border-primary/20 flex flex-col items-center justify-center text-primary flex-shrink-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider">{month}</div>
+                            <div className="text-xl font-bold leading-none">{day}</div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold truncate">{event.name}</h3>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span className="truncate">{fullDate}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
+                                <MapPin className="w-3.5 h-3.5" />
+                                <span className="truncate">{event.location ?? 'Location TBD'}</span>
+                            </div>
+                            </div>
+                            <Button size="sm" variant="outline">View</Button>
+                        </div>
+                        </CardContent>
+                    </Card>
+                    );
+                })}
+                </DataFeedback>
+            </TabsContent>
+            </Tabs>
+        </div>
+      </div>
+
+      {/* --- Story Viewer Modal --- */}
+      {selectedStoryUser && (
+        <StoryViewer user={selectedStoryUser} onClose={closeStory} />
+      )}
+    </>
+  );
+}
+
