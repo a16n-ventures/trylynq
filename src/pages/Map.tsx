@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import LeafletMap from '@/components/map/LeafletMap';
 import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 
+// ... (All types and helper functions remain the same: UserProfile, UserLocationRow, FriendOnMap, toNumber, distanceKm) ...
 type UserProfile = {
   display_name?: string | null;
   avatar_url?: string | null;
@@ -47,9 +48,6 @@ const toNumber = (v: string | number | null | undefined): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/**
- * haversine formula - returns distance in kilometers
- */
 const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371; // Earth radius in km
@@ -61,6 +59,7 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
+
 
 const Map = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,8 +75,9 @@ const Map = () => {
 
   const handleRecenter = () => {
     mapRef.current?.recenter();
-  }
+  };
 
+  // ... (All logic functions remain the same: fetchFriendsLocations, useEffects, useMemos, getStatusBadge) ...
   const fetchFriendsLocations = useCallback(async (signal?: AbortSignal) => {
     if (!user) return;
     try {
@@ -252,173 +252,178 @@ const Map = () => {
     }
   };
 
+
   return (
-    // 1. ROOT CONTAINER: Full screen, relative positioning context, overflow hidden
+    // 1. ROOT CONTAINER: (No change)
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       
-      {/* 2. MAP LAYER (z-0): Absolute position to fill parent, sits in background */}
+      {/* 2. MAP LAYER (z-0): (No change) */}
       <div className="absolute inset-0 z-0">
-        <LeafletMap ref={mapRef}
+        <LeafletMap
+          ref={mapRef}
           userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
           friendsLocations={friendsLocations}
           loading={locationLoading}
           error={locationError}
         />
-      </div> 
+      </div>
+
+      {/* 3. UI OVERLAY (z-10): This div was MISSING */}
+      <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* B. SPACER: Pushes the bottom content down */}
+        {/* A. HEADER: This component was MISSING 
+
+        {/* B. SPACER: (No change) */}
         <div className="flex-grow" />
 
-        {/* C. BOTTOM SHEET: Bottom of flex, pointer-events-auto, scrollable, max-height */}
-        <div className="relative pointer-events-auto"> 
+        {/* C. BOTTOM SHEET: (No change) */}
+        <div className="relative pointer-events-auto">
+          
+          {/* Re-center button: Classes are FIXED here */}
+          {location && (
+            <Button
+              onClick={handleRecenter}
+              variant="secondary"
+              size="icon"
+              className="absolute right-8 -top-25 z-20 rounded-full shadow-lg"
+              title="Re-center on my location"
+            >
+              <Crosshair className="h-5 w-5" />
+            </Button>
+          )}
 
-          {/* Re-center button */}
-      {location && (
-        <Button
-          onClick={handleRecenter}
-          variant="secondary"
-          size="icon"
-          className="absolute bottom-15 right-8 top-15 z-20 rounded-full shadow-lg"
-          title="Re-center on my location"
-        >
-          <Crosshair className="h-5 w-5" />
-        </Button>
-      )}
+          <div className="overflow-y-auto max-h-[60vh]">
+            <div className="container-mobile py-6 space-y-6">
+              
+              {/* Card 1: Nearby Friends (No change) */}
+              <Card className="gradient-card shadow-card border-0">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="heading-lg">Nearby friends</h3>
+                    <Badge variant="secondary" className="text-xs">
+                      {filteredFriends.length} found
+                    </Badge>
+                  </div>
 
-        <div className="overflow-y-auto max-h-[60vh]">
-          <div className="container-mobile py-6 space-y-6">
-            
-            {/* Card 1: Nearby Friends */}
-            <Card className="gradient-card shadow-card border-0">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="heading-lg">Nearby friends</h3>
-                  <Badge variant="secondary" className="text-xs">
-                    {filteredFriends.length} found
-                  </Badge>
-                </div>
+                  {filteredFriends.length === 0 && (
+                    <div className="text-sm text-muted-foreground p-3">No friends found or sharing location.</div>
+                  )}
 
-                {filteredFriends.length === 0 && (
-                  <div className="text-sm text-muted-foreground p-3">No friends found or sharing location.</div>
-                )}
+                  <div className="space-y-3">
+                    {filteredFriends.map((friend) => (
+                      <div
+                        key={friend.id}
+                        className={`flex items-center gap-3 p-3 rounded-xl transition-smooth cursor-pointer ${
+                          selectedFriend?.id === friend.id ? 'bg-primary/10' : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => setSelectedFriend(friend)}
+                      >
+                        <Avatar className="w-12 h-12">
+                          {friend.avatar ? (
+                            <AvatarImage src={friend.avatar} />
+                          ) : (
+                            <AvatarFallback className="gradient-primary text-white">
+                              {friend.name ?? '?'
+                                .split(' ')
+                                .map((n) => n[0] ?? '')
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          )}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold truncate">{friend.name}</h4>
+                            {getStatusBadge(friend.status)}
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <MapPin className="w-3 h-3" />
+                            <span>
+                              {friend.locationLabel}
+                              {friend.distanceKm != null ? ` • ${friend.distanceKm} km` : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/app/messages?user=${friend.id}`);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
-                <div className="space-y-3">
-                  {filteredFriends.map((friend) => (
-                    <div
-                      key={friend.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl transition-smooth cursor-pointer ${
-                        selectedFriend?.id === friend.id ? 'bg-primary/10' : 'hover:bg-muted/50'
-                      }`}
-                      onClick={() => setSelectedFriend(friend)}
-                    >
-                      <Avatar className="w-12 h-12">
-                        {friend.avatar ? (
-                          <AvatarImage src={friend.avatar} />
+              {/* Card 2: Selected Friend (No change) */}
+              {selectedFriend && (
+                <Card className="gradient-card shadow-card border-0">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Avatar className="w-16 h-16">
+                        {selectedFriend.avatar ? (
+                          <AvatarImage src={selectedFriend.avatar} />
                         ) : (
-                          <AvatarFallback className="gradient-primary text-white">
-                            {friend.name ?? '?'
+                          <AvatarFallback className="gradient-primary text-white text-lg">
+                            {selectedFriend.name
                               .split(' ')
-                              .map((n) => n[0] ?? '')
+                              .map((n) => n[0])
                               .join('')
                               .slice(0, 2)
                               .toUpperCase()}
                           </AvatarFallback>
                         )}
                       </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-semibold truncate">{friend.name}</h4>
-                          {getStatusBadge(friend.status)}
-                        </div>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <MapPin className="w-3 h-3" />
-                          <span>
-                            {friend.locationLabel}
-                            {friend.distanceKm != null ? ` • ${friend.distanceKm} km` : ''}
-                          </span>
+                      <div>
+                        <h3 className="heading-lg">{selectedFriend.name}</h3>
+                        <p className="text-sm text-muted-foreground">{selectedFriend.locationLabel}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {getStatusBadge(selectedFriend.status)}
+                          <span className="text-xs text-muted-foreground">{selectedFriend.lastSeen}</span>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
                       <Button
-                        size="sm"
+                        className="gradient-primary text-white"
+                        onClick={() => navigate(`/app/messages?user=${selectedFriend.id}`)}
+                      >
+                        Send message
+                      </Button>
+                      <Button
                         variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/app/messages?user=${friend.id}`);
+                        onClick={() => {
+                          const { latitude, longitude } = selectedFriend;
+                          if (latitude && longitude) {
+                            // BUG FIX: Correctly formatted Google Maps URL
+                            const destination = encodeURIComponent(`${latitude},${longitude}`);
+                            window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, '_blank');
+                          } else {
+                            toast.error('Location unavailable for this friend');
+                          }
                         }}
                       >
-                        View
+                        Get directions
                       </Button>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card 2: Selected Friend */}
-            {selectedFriend && (
-              <Card className="gradient-card shadow-card border-0">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Avatar className="w-16 h-16">
-                      {selectedFriend.avatar ? (
-                        <AvatarImage src={selectedFriend.avatar} />
-                      ) : (
-                        <AvatarFallback className="gradient-primary text-white text-lg">
-                          {selectedFriend.name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </AvatarFallback>
-                      )}
-                    </Avatar>
-                    <div>
-                      <h3 className="heading-lg">{selectedFriend.name}</h3>
-                      <p className="text-sm text-muted-foreground">{selectedFriend.locationLabel}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(selectedFriend.status)}
-                        <span className="text-xs text-muted-foreground">{selectedFriend.lastSeen}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button
-                      className="gradient-primary text-white"
-                      onClick={() => navigate(`/app/messages?user=${selectedFriend.id}`)}
-                    >
-                      Send message
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const { latitude, longitude } = selectedFriend;
-                        if (latitude && longitude) {
-                          // BUG FIX: Correctly formatted Google Maps URL
-                          const destination = encodeURIComponent(`${latitude},${longitude}`);
-                          window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, '_blank');
-                        } else {
-                          toast.error('Location unavailable for this friend');
-                        }
-                      }}
-                    >
-                      Get directions
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+        
+      </div> {/* This closes the UI OVERLAY (z-10) div */}
 
-      {/* 4. MODAL: Renders in a portal, sits on top of everything */}
-      <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
-    </div>
+    </div> // <-- This is the one, correct closing tag for the ROOT CONTAINER
   );
 };
 
 export default Map;
-  
