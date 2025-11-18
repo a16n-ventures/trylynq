@@ -5,22 +5,46 @@ import { Users, Calendar, MapPin, X, Loader2, AlertCircle } from "lucide-react";
 import React, { useState, useEffect } from "react";
 // Assumed Supabase client import path
 import { supabase } from "@/lib/supabase/client"; 
-// BEST PRACTICE: Import auto-generated types from Supabase
-// (Run `npx supabase gen types typescript --project-id <your-project-id> > lib/supabase/types.ts`)
-import { Database } from "@/lib/supabase/types"; 
+// Removed dependency on auto-generated types to fix build errors
 
-// --- Type Definitions based on Supabase Schema ---
-// BEST PRACTICE: Use generated types for Row-level data
-type Community = Database['public']['Tables']['communities']['Row'];
-type Event = Database['public']['Tables']['events']['Row'];
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type Story = Database['public']['Tables']['stories']['Row'];
+// --- Type Definitions (Self-Contained) ---
+// BEST PRACTICE: Define types manually *if* auto-generated types are not available
+// This ensures the component is self-contained and avoids build errors.
 
-// BEST PRACTICE: Create specific types for custom queries
-// This query joins profiles with stories, so we need a combined type.
-type ProfileWithStories = Pick<Profile, 'id' | 'username' | 'avatar_url'> & {
-  stories: Pick<Story, 'id' | 'created_at'>[]
+interface Profile {
+  id: string;
+  username: string | null;
+  avatar_url: string | null;
+}
+
+interface Story {
+  id: string;
+  media_url: string;
+  media_type: 'image' | 'video'; // Assuming these are your enum values
+  created_at: string;
+  user_id: string;
+}
+
+interface Community {
+  id: string;
+  name: string;
+  member_count: number | null;
+  description: string | null;
+  avatar_url: string | null;
+}
+
+interface Event {
+  id: string;
+  name: string;
+  event_date: string | null;
+  location: string | null;
+}
+
+// Type for the specific story user query joining profiles and stories
+type ProfileWithStoryInner = Profile & {
+  stories: { id: string; created_at: string }[];
 };
+
 
 // --- Helper: Loading & Error Component ---
 // To avoid repeating loader/error logic
@@ -56,7 +80,7 @@ const DataFeedback: React.FC<{
 // --- Story Viewer Component (Fixed) ---
 
 interface StoryViewerProps {
-  user: Profile; // The Profile type is sufficient here
+  user: Profile; // Uses the manually defined Profile type
   onClose: () => void;
 }
 
@@ -73,14 +97,13 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
       setError(null);
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-      // BEST PRACTICE: Select only the columns you need.
       const { data, error } = await supabase
         .from('stories')
-        .select('id, media_url, media_type, created_at') // Was select('*')
+        .select('id, media_url, media_type, created_at, user_id') // Be specific
         .eq('user_id', user.id)
         .gte('created_at', oneDayAgo)
         .order('created_at', { ascending: true })
-        .returns<Story[]>(); // BEST PRACTICE: Use .returns() for type safety
+        .returns<Story[]>(); // Type-checks against our manual Story interface
 
       if (error) {
         console.error('Error fetching stories:', error);
@@ -112,7 +135,6 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
         <X className="w-8 h-8" />
       </button>
 
-      {/* BEST PRACTICE: Handle loading and error states explicitly */}
       {loading && <Loader2 className="w-10 h-10 text-white animate-spin" />}
       
       {error && (
@@ -156,6 +178,7 @@ function StoryViewer({ user, onClose }: StoryViewerProps) {
           {/* User Info */}
           <div className="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/50 to-transparent">
             <div className="flex items-center gap-2">
+              {/* NOTE: Assumes you have this fallback image in your /public folder */}
               <img src={user.avatar_url ?? '/default-avatar.png'} alt={user.username ?? 'User'} className="w-10 h-10 rounded-full border-2 border-white object-cover" />
               <span className="text-white font-semibold">{user.username}</span>
             </div>
@@ -180,7 +203,7 @@ export default function Discover() {
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedStoryUser, setSelectedStoryUser] = useState<Profile | null>(null);
 
-  // BEST PRACTICE: Separate loading and error states for each data source
+  // Separate loading and error states for each data source
   const [storyLoading, setStoryLoading] = useState(true);
   const [storyError, setStoryError] = useState<string | null>(null);
   
@@ -207,14 +230,14 @@ export default function Discover() {
         `)
         .filter('stories.created_at', 'gte', oneDayAgo)
         .limit(15)
-        // BEST PRACTICE: Use .returns() to get strong type checking
-        .returns<ProfileWithStories[]>();
+        .returns<ProfileWithStoryInner[]>(); // Type-checks against our manual type
 
       if (error) {
         console.error('Error fetching story users:', error);
         setStoryError(error.message);
       } else if (data) {
-        setStoryUsers(data); // Data is now correctly typed
+        // Data is ProfileWithStoryInner[], which is compatible with Profile[] state
+        setStoryUsers(data); 
       }
       setStoryLoading(false);
     }
@@ -223,12 +246,11 @@ export default function Discover() {
     async function fetchCommunities() {
       setCommunityLoading(true);
       setCommunityError(null);
-      // BEST PRACTICE: Select only the columns you need
       const { data, error } = await supabase
         .from('communities')
-        .select('id, name, member_count, description, avatar_url') // Was select('*')
+        .select('id, name, member_count, description, avatar_url')
         .limit(10)
-        .returns<Community[]>(); // BEST PRACTICE: Use .returns()
+        .returns<Community[]>(); // Type-checks against our manual Community interface
 
       if (error) {
         console.error('Error fetching communities:', error);
@@ -243,13 +265,12 @@ export default function Discover() {
     async function fetchEvents() {
       setEventLoading(true);
       setEventError(null);
-      // BEST PRACTICE: Select only the columns you need
       const { data, error } = await supabase
         .from('events')
-        .select('id, name, event_date, location') // Was select('*')
+        .select('id, name, event_date, location')
         .order('event_date', { ascending: true })
         .limit(10)
-        .returns<Event[]>(); // BEST PRACTICE: Use .returns()
+        .returns<Event[]>(); // Type-checks against our manual Event interface
 
       if (error) {
         console.error('Error fetching events:', error);
@@ -275,7 +296,6 @@ export default function Discover() {
 
   // Helper to format event date
   const formatEventDate = (dateString: string | null) => {
-    // BEST PRACTICE: Handle potential null values from DB
     if (!dateString) return { month: '???', day: '??', fullDate: 'Date not specified' };
     const date = new Date(dateString);
     const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
@@ -309,8 +329,8 @@ export default function Discover() {
                   <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
                     <div className="w-full h-full rounded-full bg-background p-0.5">
                       <img
-                        // BEST PRACTICE: Handle potential null values for avatar
-                        src={user.avatar_url ?? '/default-avatar.png'} // Add a fallback avatar
+                        // NOTE: Assumes you have this fallback image in your /public folder
+                        src={user.avatar_url ?? '/default-avatar.png'} 
                         alt={user.username ?? 'User'}
                         className="w-full h-full rounded-full object-cover"
                       />
@@ -361,8 +381,9 @@ export default function Discover() {
                       </div>
                       <div className="flex-1">
                         <h3 className="font-semibold">{community.name}</h3>
-                        <p className="text-sm text-muted-foreground">{community.member_count} members</p>
-                        <p className="text-sm mt-1">{community.description}</p>
+                        {/* Handle potential null values from DB */}
+                        <p className="text-sm text-muted-foreground">{community.member_count ?? 0} members</p>
+                        <p className="text-sm mt-1">{community.description ?? 'No description.'}</p>
                       </div>
                       <Button size="sm">Join</Button>
                     </div>
@@ -401,7 +422,7 @@ export default function Discover() {
                           </div>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <MapPin className="w-4 h-4" />
-                            <span>{event.location}</span>
+                            <span>{event.location ?? 'Location TBD'}</span>
                           </div>
                         </div>
                         <Button size="sm" variant="outline">View</Button>
@@ -421,4 +442,5 @@ export default function Discover() {
       )}
     </>
   );
-}
+       }
+      
