@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Mail, Eye, EyeOff, Chrome, Facebook } from 'lucide-react';
+import { Mail, Eye, EyeOff, Chrome, Lock, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -19,11 +19,8 @@ interface AuthModalProps {
 const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
+  const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '' });
+  
   const { toast } = useToast();
   const { signUp, signIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
@@ -31,22 +28,15 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Basic Validation
     if (!formData.email || !formData.password) {
-      toast({
-        title: "Error",
-        description: "Please fill in all fields",
-        variant: "destructive"
-      });
-      return;
+      return toast({ title: "Missing Fields", description: "Please fill in all required fields.", variant: "destructive" });
     }
-
     if (mode === 'signup' && formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Passwords do not match",
-        variant: "destructive"
-      });
-      return;
+      return toast({ title: "Password Mismatch", description: "Passwords do not match.", variant: "destructive" });
+    }
+    if (formData.password.length < 6) {
+      return toast({ title: "Password too short", description: "Must be at least 6 characters.", variant: "destructive" });
     }
 
     setLoading(true);
@@ -56,163 +46,131 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
         ? await signUp(formData.email, formData.password)
         : await signIn(formData.email, formData.password);
 
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
-        });
+      if (error) throw error;
+
+      if (mode === 'signup') {
+        toast({ title: "Account Created!", description: "Check your email to verify your account.", className: "bg-green-500 text-white border-0" });
       } else {
-        if (mode === 'signup') {
-          toast({
-            title: "Success!",
-            description: "Account created! Please check your email to verify.",
-          });
-        } else {
-          toast({
-            title: "Success!",
-            description: "Signed in successfully",
-          });
-          onOpenChange(false);
-          navigate('/app');
-        }
+        toast({ title: "Welcome back!", description: "Signing you in..." });
+        onOpenChange(false);
+        navigate('/app');
       }
+    } catch (error: any) {
+      toast({ title: "Authentication Failed", description: error.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSocialAuth = async (provider: string) => {
+  const handleGoogle = async () => {
     setLoading(true);
     try {
       const { error } = await signInWithGoogle();
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
-    } finally {
+      if (error) throw error;
+    } catch (error: any) {
+      toast({ title: "Google Sign-In Failed", description: error.message, variant: "destructive" });
       setLoading(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md gradient-card border-0 shadow-primary">
-        <DialogHeader className="text-center">
-          <DialogTitle className="heading-lg gradient-primary bg-clip-text text-transparent">
-            {mode === 'login' ? 'Welcome Back!' : 'Join Lynq'}
+      <DialogContent className="sm:max-w-md border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
+        <DialogHeader className="text-center space-y-2">
+          <DialogTitle className="text-2xl font-bold tracking-tight">
+            {mode === 'login' ? 'Welcome Back' : 'Create Account'}
           </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {mode === 'login' ? 'Enter your details to access your account' : 'Join the community and start connecting'}
+          </p>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 mt-4">
           {/* Social Auth */}
-          <div className="space-y-3">
-            <Button 
-              variant="outline" 
-              className="w-full h-12 transition-smooth hover:shadow-card"
-              onClick={() => handleSocialAuth('Google')}
-              disabled={loading}
-            >
-              <Chrome className="w-5 h-5 mr-3" />
-              Continue with Google
-            </Button>
-          </div>
+          <Button variant="outline" className="w-full h-11 font-medium hover:bg-muted/50" onClick={handleGoogle} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Chrome className="w-4 h-4 mr-2" />}
+            Continue with Google
+          </Button>
 
           <div className="relative">
-            <Separator />
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-4 text-sm text-muted-foreground">
-              or continue with
-            </div>
+            <div className="absolute inset-0 flex items-center"><Separator /></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
           </div>
 
-          {/* Form */}
+          {/* Email Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email/Phone Toggle */}
             <div className="space-y-2">
-              <Label>Email or Phone</Label>
+              <Label>Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="Enter your email or phone"
-                  className="pl-10 h-12"
+                <Input 
+                  type="email" 
+                  placeholder="name@example.com" 
+                  className="pl-10 h-11 bg-muted/30" 
                   value={formData.email}
                   onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  disabled={loading}
                 />
               </div>
             </div>
 
-            {/* Password */}
             <div className="space-y-2">
               <Label>Password</Label>
               <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  className="pr-10 h-12"
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="••••••••" 
+                  className="pl-10 pr-10 h-11 bg-muted/30" 
                   value={formData.password}
                   onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  disabled={loading}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </Button>
+                </button>
               </div>
             </div>
 
-            {/* Confirm Password for Signup */}
             {mode === 'signup' && (
-              <div className="space-y-2">
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                 <Label>Confirm Password</Label>
-                <Input
-                  type="password"
-                  placeholder="Confirm your password"
-                  className="h-12"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    className="pl-10 h-11 bg-muted/30" 
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                    disabled={loading}
+                  />
+                </div>
               </div>
             )}
 
-            {/* Submit Button */}
-            <Button 
-              type="submit" 
-              className="w-full h-12 gradient-primary text-white shadow-primary transition-smooth hover:shadow-glow"
-              disabled={loading}
-            >
-              {loading ? 'Processing...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+            <Button type="submit" className="w-full h-11 gradient-primary text-white font-semibold shadow-md hover:shadow-lg transition-all" disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                <span className="flex items-center">
+                  {mode === 'login' ? 'Sign In' : 'Create Account'} <ArrowRight className="w-4 h-4 ml-2" />
+                </span>
+              )}
             </Button>
           </form>
 
-          {/* Mode Switch */}
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">
+          {/* Footer Switch */}
+          <div className="text-center text-sm">
+            <span className="text-muted-foreground">
               {mode === 'login' ? "Don't have an account?" : "Already have an account?"}
-              <Button 
-                variant="link" 
-                className="ml-1 p-0 h-auto text-primary gradient-primary bg-clip-text text-transparent font-semibold"
-                onClick={() => onModeChange(mode === 'login' ? 'signup' : 'login')}
-              >
-                {mode === 'login' ? 'Sign up' : 'Sign in'}
-              </Button>
-            </p>
+            </span>
+            <button 
+              type="button"
+              onClick={() => onModeChange(mode === 'login' ? 'signup' : 'login')}
+              className="ml-2 font-semibold text-primary hover:underline"
+            >
+              {mode === 'login' ? 'Sign up' : 'Log in'}
+            </button>
           </div>
-
-          {/* Terms for Signup */}
-          {mode === 'signup' && (
-            <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              By creating an account, you agree to our Terms of Service and Privacy Policy. 
-              Your location data is kept private and secure.
-            </p>
-          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -220,3 +178,4 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
 };
 
 export default AuthModal;
+      
