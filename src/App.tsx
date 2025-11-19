@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+
+// Pages & Layouts
 import Index from "./pages/Index";
 import Discover from "./pages/Discover";
 import Map from "./pages/Map";
@@ -18,6 +20,12 @@ import Notifications from "./pages/Notifications";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
+// Admin Components (These were missing)
+import AdminLayout from "./layouts/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminSettings from "./pages/admin/AdminSettings";
+import AdminUsers from "./pages/admin/AdminUsers";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -28,13 +36,17 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public Route */}
             <Route path="/" element={<Index />} />
-            <Route path="admin" element={<AdminLayout />}>
-  <Route index element={<AdminDashboard />} />
-  <Route path="settings" element={<AdminSettings />} />
-  {/* NEW ROUTE 👇 */}
-  <Route path="users" element={<AdminUsers />} />
-</Route>
+
+            {/* Admin Routes */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="settings" element={<AdminSettings />} />
+              <Route path="users" element={<AdminUsers />} />
+            </Route>
+
+            {/* User App Routes (With Bottom Navigation) */}
             <Route path="/app" element={
               <ProtectedRoute>
                 <MainLayout />
@@ -49,6 +61,8 @@ const App = () => (
               <Route path="profile" element={<Profile />} />
               <Route path="notifications" element={<Notifications />} />
             </Route>
+
+            {/* Standalone Protected Routes (No Bottom Nav) */}
             <Route path="/create-event" element={
               <ProtectedRoute>
                 <CreateEvent />
@@ -59,7 +73,8 @@ const App = () => (
                 <Premium />
               </ProtectedRoute>
             } />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
@@ -69,3 +84,4 @@ const App = () => (
 );
 
 export default App;
+                
