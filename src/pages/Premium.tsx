@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext'; 
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query'; 
+import { useQuery, useQueryClient } from '@tanstack/react-query'; 
 
 // --- Type definitions ---
 declare global {
@@ -43,6 +43,28 @@ const Premium = () => {
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // --- 1. Dynamic Data Fetching ---
+  // This pulls the prices you set in the Admin Dashboard
+  const { data: settings, isLoading: isLoadingSettings } = useQuery({
+    queryKey: ['app_settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // --- 2. Data Parsing (With Defaults) ---
+  const pricing = useMemo(() => {
+    const remotePrice = settings?.find(s => s.key === 'premium_prices')?.value;
+    return {
+      monthly: remotePrice?.monthly || 2499, // Default fallback
+      yearly: remotePrice?.yearly || 19999   // Default fallback
+    };
+  }, [settings]);
+
   useEffect(() => {
     if (!FLUTTERWAVE_PUBLIC_KEY) {
       console.error("Flutterwave public key is missing");
@@ -53,6 +75,7 @@ const Premium = () => {
       .catch(() => toast.error('Failed to load payment system'));
   }, []);
 
+  // Hardcoded "Single Upgrade" features (You can move these to DB later if needed)
   const premiumFeatures = [
     {
       icon: <Crown className="w-5 h-5" />,
@@ -112,16 +135,11 @@ const Premium = () => {
       customizations: {
         title: "Lynq Premium",
         description: `Upgrade to ${title}`,
-        logo: "https://lynq.app/logo.png", // Replace with actual logo URL
+        logo: "https://lynq.app/logo.png",
       },
       callback: async function(response: any) {
-        // Note: Flutterwave modal stays open or closes depending on config.
-        // We verify strictly on the server side via Edge Function.
-        
         const toastId = toast.loading("Verifying transaction...");
-        
         try {
-          // Call Supabase Edge Function
           const { data, error } = await supabase.functions.invoke('verify-payment', {
             body: { 
               transaction_id: response.transaction_id, 
@@ -134,20 +152,14 @@ const Premium = () => {
 
           if (data?.status === 'success') {
             toast.success("Upgrade successful! Welcome to Premium.", { id: toastId });
-            
-            // Refresh user state immediately
             await queryClient.invalidateQueries({ queryKey: ['profile'] });
-            
-            // Slight delay for UX
-            setTimeout(() => {
-              navigate('/app/profile');
-            }, 1500);
+            setTimeout(() => navigate('/app/profile'), 1500);
           } else {
             throw new Error(data?.message || "Verification failed");
           }
         } catch (err: any) {
           console.error("Payment verification error:", err);
-          toast.error("Payment completed but verification failed. Please contact support.", { id: toastId });
+          toast.error("Payment verification failed. Please contact support.", { id: toastId });
         } finally {
           setIsProcessing(false);
         }
@@ -159,6 +171,10 @@ const Premium = () => {
 
     window.FlutterwaveCheckout && window.FlutterwaveCheckout(config);
   };
+
+  // Calculate savings
+  const yearlySavings = Math.round(pricing.monthly * 12 - pricing.yearly);
+  const savingsPercent = Math.round((yearlySavings / (pricing.monthly * 12)) * 100);
 
   const PremiumCard = ({ feature }: { feature: (typeof premiumFeatures)[0] }) => (
     <Card className="gradient-card shadow-card border-0 relative overflow-hidden hover:shadow-lg transition-shadow">
@@ -204,6 +220,14 @@ const Premium = () => {
     </Card>
   );
 
+  if (isLoadingSettings) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
@@ -240,12 +264,12 @@ const Premium = () => {
           >
             Yearly
             <span className="absolute -top-2 -right-2 bg-green-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-              SAVE 30%
+              SAVE {savingsPercent}%
             </span>
           </div>
         </div>
 
-        {/* Best Value Card */}
+        {/* Best Value Card (Uses Dynamic Pricing) */}
         <Card className="border-primary/50 shadow-lg relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-bl-xl">
              BEST VALUE
@@ -276,21 +300,23 @@ const Premium = () => {
                <div className="flex items-end justify-between mb-3">
                  <div>
                    <span className="text-3xl font-bold tracking-tight">
-                     ₦{billingPeriod === 'monthly' ? '2,499' : '19,999'}
+                     ₦{billingPeriod === 'monthly' ? pricing.monthly.toLocaleString() : pricing.yearly.toLocaleString()}
                    </span>
                    <span className="text-sm text-muted-foreground">/{billingPeriod === 'monthly' ? 'mo' : 'yr'}</span>
                  </div>
                  {billingPeriod === 'yearly' && (
                    <div className="text-right">
-                     <div className="text-xs text-muted-foreground line-through">₦29,988</div>
-                     <div className="text-xs font-bold text-green-600">Save ₦9,989</div>
+                     <div className="text-xs text-muted-foreground line-through">
+                       ₦{(pricing.monthly * 12).toLocaleString()}
+                     </div>
+                     <div className="text-xs font-bold text-green-600">Save ₦{yearlySavings.toLocaleString()}</div>
                    </div>
                  )}
                </div>
                <Button 
                   className="w-full gradient-primary text-white h-11 shadow-md"
                   onClick={() => handlePayment(
-                    billingPeriod === 'monthly' ? 2499 : 19999,
+                    billingPeriod === 'monthly' ? pricing.monthly : pricing.yearly,
                     'Lynq Unlimited'
                   )}
                   disabled={isProcessing}
@@ -301,7 +327,7 @@ const Premium = () => {
           </CardContent>
         </Card>
 
-        {/* À la carte Features */}
+        {/* À la carte Features (Currently Hardcoded - Roadmap Item) */}
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-muted-foreground ml-1">SINGLE UPGRADES</h3>
           {premiumFeatures.map((feature, index) => (
