@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { MapPin, Users, MessageCircle, Bell, Shield, Sparkles } from 'lucide-react';
-import heroImage from '@/assets/hero-image.jpg';
+import { MapPin, Users, MessageCircle, Shield, Sparkles, ArrowRight, Globe } from 'lucide-react';
+import heroImage from '@/assets/hero-image.jpg'; // Ensure this image exists or use fallback color
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,114 +19,88 @@ const Index = () => {
     }
   }, [user, navigate]);
 
-  const features = [
-    {
-      icon: <Users className="w-8 h-8" />,
-      title: "Find Your People",
-      description: "Discover which friends from your contacts are nearby or in your city"
-    },
-    {
-      icon: <MapPin className="w-8 h-8" />,
-      title: "Smart Location Sharing",
-      description: "Share your location privately with friends - only city or neighborhood level"
-    },
-    {
-      icon: <MessageCircle className="w-8 h-8" />,
-      title: "Instant Reconnection",
-      description: "Start conversations and plan hangouts with friends who are nearby"
-    },
-    {
-      icon: <Bell className="w-8 h-8" />,
-      title: "Smart Notifications",
-      description: "Get notified when friends from your contacts enter your area"
-    },
-    {
-      icon: <Shield className="w-8 h-8" />,
-      title: "Privacy First",
-      description: "Your exact location is never shared - only general area for privacy"
-    },
-    {
-      icon: <Sparkles className="w-8 h-8" />,
-      title: "Plan Events",
-      description: "Create meetups, parties, and sell tickets to friends in your network"
-    }
-  ];
-
   const handleAuth = (mode: 'login' | 'signup') => {
     setAuthMode(mode);
     setShowAuth(true);
   };
 
+  const features = [
+    { icon: <Users className="w-6 h-6" />, title: "Social Discovery", desc: "Find friends nearby instantly." },
+    { icon: <MapPin className="w-6 h-6" />, title: "Privacy Mode", desc: "Share location on your terms." },
+    { icon: <MessageCircle className="w-6 h-6" />, title: "Live Chat", desc: "Seamless real-time messaging." },
+    { icon: <Sparkles className="w-6 h-6" />, title: "Events", desc: "Host parties & sell tickets." },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        {/* Background Gradient */}
-        <div className="absolute inset-0 gradient-hero opacity-90" />
+    <div className="min-h-screen bg-background flex flex-col">
+      
+      {/* HERO SECTION */}
+      <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
         
-        {/* Hero Image */}
+        {/* Background Image with Gradient Overlay */}
         <div className="absolute inset-0 z-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-background z-10" />
           <img 
             src={heroImage} 
-            alt="Lynq - Connect with nearby friends" 
-            className="w-full h-full object-cover opacity-20"
+            onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=2070&auto=format&fit=crop'}
+            alt="Background" 
+            className="w-full h-full object-cover scale-105 animate-slow-zoom"
           />
         </div>
 
         {/* Content */}
-        <div className="relative z-10 container-mobile text-center text-white">
-          <div className="space-y-8">
-            <div className="space-y-4">
-              <h1 className="heading-display text-white">
-                Lynq
-              </h1>
-              <p className="text-xl opacity-90 max-w-2xl mx-auto leading-relaxed">
-                Never lose touch with friends again. Discover who's nearby, reconnect instantly, and plan amazing hangouts.
-              </p>
-            </div>
+        <div className="relative z-20 container-mobile text-center text-white px-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <Globe className="w-3 h-3 text-blue-400" />
+            <span className="text-xs font-medium tracking-wide">Connecting 10,000+ Users</span>
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button 
-                size="lg" 
-                variant="secondary"
-                onClick={() => handleAuth('signup')}
-                className="min-w-[200px] bg-white/20 text-white border-white/30 hover:bg-white/30 transition-smooth shadow-glow"
-              >
-                Get Started Free
-              </Button>
-              <Button 
-                size="lg" 
-                variant="outline"
-                onClick={() => handleAuth('login')}
-                className="min-w-[200px] bg-transparent text-white border-white/50 hover:bg-white/10 transition-smooth"
-              >
-                Sign In
-              </Button>
-            </div>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-6 leading-tight animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            Your World, <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Connected.</span>
+          </h1>
+          
+          <p className="text-lg md:text-xl text-white/80 max-w-xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
+            The social map that lets you see who's nearby, plan spontaneous hangouts, and discover local events securely.
+          </p>
 
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-300">
+            <Button 
+              size="lg" 
+              className="min-w-[200px] h-14 text-lg font-semibold rounded-full gradient-primary text-white shadow-[0_0_20px_rgba(37,99,235,0.5)] hover:shadow-[0_0_30px_rgba(37,99,235,0.7)] transition-all hover:scale-105"
+              onClick={() => handleAuth('signup')}
+            >
+              Join Now - It's Free
+            </Button>
+            <Button 
+              size="lg" 
+              variant="outline"
+              className="min-w-[200px] h-14 text-lg font-semibold rounded-full bg-white/5 border-white/20 text-white hover:bg-white/10 backdrop-blur-sm"
+              onClick={() => handleAuth('login')}
+            >
+              Sign In
+            </Button>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-background">
-        <div className="container-tablet">
-          <div className="text-center mb-16">
-            <h2 className="heading-xl mb-4">Why Lynq?</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Reconnect with your existing friends based on location. No strangers, no dating - just real connections with people you already know.
-            </p>
+      {/* FEATURES GRID */}
+      <section className="py-20 px-4 bg-background">
+        <div className="container-mobile">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-2">Everything you need</h2>
+            <p className="text-muted-foreground">Built for real-life connections.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <Card key={index} className="gradient-card shadow-card border-0 transition-smooth hover:shadow-primary hover:-translate-y-1">
-                <CardContent className="p-8 text-center">
-                  <div className="gradient-primary text-white w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-primary">
-                    {feature.icon}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((f, i) => (
+              <Card key={i} className="border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg group">
+                <CardContent className="p-6 flex flex-col items-center text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    {f.icon}
                   </div>
-                  <h3 className="heading-lg mb-3">{feature.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{feature.description}</p>
+                  <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
+                  <p className="text-sm text-muted-foreground">{f.desc}</p>
                 </CardContent>
               </Card>
             ))}
@@ -134,42 +108,16 @@ const Index = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 gradient-primary relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10" />
-        <div className="relative z-10 container-tablet text-center text-white">
-          <div className="space-y-8">
-            <h2 className="heading-xl">Ready to reconnect?</h2>
-            <p className="text-xl opacity-90 max-w-2xl mx-auto">
-              Join thousands of people who are rediscovering friendships and creating new memories with people nearby.
-            </p>
-            <div className="flex items-center justify-center gap-8 text-white text-sm opacity-75">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                <span>Privacy Protected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span>Friends Only</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                <span>100% Free</span>
-              </div>
-            </div>
-            <Button 
-              size="lg" 
-              variant="secondary"
-              onClick={() => handleAuth('signup')}
-              className="min-w-[200px] bg-white text-primary hover:bg-white/90 transition-smooth shadow-glow"
-            >
-              Start Connecting Now
-            </Button>
-          </div>
+      {/* FOOTER CTA */}
+      <section className="py-12 bg-muted/30 border-t border-border">
+        <div className="container-mobile text-center">
+          <h2 className="text-2xl font-bold mb-6">Ready to jump in?</h2>
+          <Button variant="link" onClick={() => handleAuth('signup')} className="text-primary text-lg group">
+            Create your account <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+          </Button>
         </div>
       </section>
 
-      {/* Auth Modal */}
       <AuthModal 
         open={showAuth} 
         onOpenChange={setShowAuth} 
@@ -181,3 +129,4 @@ const Index = () => {
 };
 
 export default Index;
+        
