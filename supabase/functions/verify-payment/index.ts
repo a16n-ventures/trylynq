@@ -1,90 +1,109 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js";
-// WARNING: This is a DANGEROUS client.
-// It has service_role privileges and can bypass RLS.
-// NEVER expose this to the client.
-const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-// Get the Flutterwave Secret Key from your Edge Function's secrets
-// In Supabase Studio: Project > Settings > Functions > Secrets
-// Add a new secret: FLUTTERWAVE_SECRET_KEY
-const FLUTTERWAVE_SECRET_KEY = Deno.env.get('FLUTTERWAVE_SECRET_KEY');
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const FLUTTERWAVE_SECRET_KEY = Deno.env.get("FLUTTERWAVE_SECRET_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-serve(async (req)=>{
-  // Handle preflight OPTIONS request for CORS
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: corsHeaders
-    });
+
+serve(async (req) => {
+  // Handle CORS (Browser security)
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
+
   try {
-    // 1. Get user and request body
-    const { tx_ref, expected_amount, expected_currency } = await req.json();
-    // Get the user's JWT from the request header
-    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Missing Authorization header');
-    const token = authHeader.replace(/^Bearer\s+/i, '');
-    const { data: { user }, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr) throw userErr;
-    if (!user) {
-      throw new Error('User not authenticated');
-    }
-    if (!FLUTTERWAVE_SECRET_KEY) {
-      throw new Error('Payment processor not configured on server.');
-    }
-    // 2. Call Flutterwave to verify the transaction
-    const verificationUrl = `https://api.flutterwave.com/v3/transactions/verify_by_tx_ref?tx_ref=${encodeURIComponent(tx_ref)}`;
-    const response = await fetch(verificationUrl, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`
-      }
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch transaction status from Flutterwave');
-    }
-    const paymentData = await response.json();
-    // 3. CRITICAL: Verify payment details
-    if (paymentData.status === 'success' && paymentData.data?.status === 'successful' && Number(paymentData.data?.amount) === Number(expected_amount) && String(paymentData.data?.currency) === String(expected_currency)) {
-      // 4. Payment is valid! Grant premium access.
-      // We use the admin client to bypass RLS.
-      const { error: updateError } = await supabaseAdmin.from('profiles') // Assuming this is your table
-      .update({
-        is_premium: true,
-        premium_tier: 'full_package',
-        updated_at: new Date().toISOString()
-      }).eq('user_id', user.id);
-      if (updateError) {
-        throw new Error(`Failed to update user profile: ${updateError.message}`);
-      }
-      // 5. Return success to the client
-      return new Response(JSON.stringify({
-        status: 'success',
-        message: 'Premium activated'
-      }), {
+    const { transaction_id, tx_ref, expected_amount } = await req.json();
+
+    if (!transaction_id) throw new Error("Missing transaction ID");
+
+    // 1. VERIFY WITH FLUTTERWAVE
+    // We do not trust the frontend. We ask Flutterwave directly.
+    const flwResponse = await fetch(
+      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+      {
+        method: "GET",
         headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    } else {
-      // 4. Payment is invalid or failed
-      throw new Error(`Payment verification failed. Status: ${paymentData.data?.status ?? paymentData.status}`);
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
+        },
+      }
+    );
+
+    const flwData = await flwResponse.json();
+
+    if (flwData.status !== "success") {
+      throw new Error("Flutterwave verification failed");
     }
-  } catch (error) {
-    // 5. Return error to the client
-    return new Response(JSON.stringify({
-      status: 'error',
-      message: error instanceof Error ? error.message : String(error)
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      },
-      status: 400
+
+    const transaction = flwData.data;
+
+    // 2. SECURITY CHECKS
+    // Check A: Was the transaction actually successful?
+    if (transaction.status !== "successful") {
+      throw new Error("Transaction was not successful");
+    }
+
+    // Check B: Did they pay the correct amount?
+    // (Prevents hackers from modifying the HTML to pay ₦1 instead of ₦20,000)
+    if (transaction.amount < expected_amount) {
+      throw new Error(`Fraud detected: Amount paid (${transaction.amount}) is less than expected (${expected_amount})`);
+    }
+
+    // Check C: Currency Check
+    if (transaction.currency !== "NGN") {
+      throw new Error("Invalid currency");
+    }
+
+    // 3. UPGRADE THE USER
+    // We use the SERVICE_ROLE_KEY here, which bypasses RLS.
+    // The user cannot do this themselves.
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // Extract user ID from the tx_ref (we set this as "lynq-USERID-timestamp" in frontend)
+    const userId = tx_ref.split('-')[1]; 
+
+    // Update their profile to Premium
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ 
+        is_premium: true,
+        premium_updated_at: new Date().toISOString()
+        // You could also add an expiration date here logic based on monthly/yearly
+      })
+      .eq("user_id", userId);
+
+    if (updateError) throw updateError;
+
+    // 4. LOG THE TRANSACTION (For your Revenue Dashboard)
+    await supabase.from("payments").insert({
+      user_id: userId,
+      amount: transaction.amount,
+      provider: "flutterwave",
+      transaction_id: String(transaction_id),
+      status: "success"
     });
+
+    return new Response(
+      JSON.stringify({ status: "success", message: "Payment verified and account upgraded" }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
+
+  } catch (error: any) {
+    return new Response(
+      JSON.stringify({ status: "error", message: error.message }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      }
+    );
   }
 });
+  
