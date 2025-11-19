@@ -21,7 +21,7 @@ import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
 // Admin Components (These were missing)
-import AdminLayout from "./layouts/AdminLayout";
+import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminUsers from "./pages/admin/AdminUsers";
