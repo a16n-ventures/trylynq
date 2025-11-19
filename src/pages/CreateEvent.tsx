@@ -114,7 +114,7 @@ const CreateEvent = () => {
       if (error) throw error;
 
       toast.success('Event created successfully!');
-      navigate('/events'); // Redirect to events list
+      navigate('/app/events'); // Redirect to events list
     } catch (error: any) {
       console.error('Error creating event:', error);
       toast.error('Failed to create event: ' + error.message);
