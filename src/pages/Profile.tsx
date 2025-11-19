@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,14 +42,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// --- Types ---
+// --- TYPES ---
 interface ProfileData {
   user_id: string;
   display_name: string;
   bio: string;
   avatar_url: string;
   created_at: string;
-  profile_views_30d?: number; // AI/Analytics Feature
+  profile_views_30d?: number; // New AI Stat
   preferences?: {
     notifications: boolean;
     discovery_radius?: number;
@@ -64,7 +64,7 @@ interface ProfileStats {
   friends: number;
   events: number;
   messages: number;
-  event_views_30d?: number; // AI/Analytics Feature
+  event_views_30d?: number; // New AI Stat
 }
 
 interface CombinedProfile {
@@ -73,17 +73,32 @@ interface CombinedProfile {
   stats: ProfileStats;
 }
 
-// --- Helper: Data Fetching Function ---
+// --- DATA FETCHING ---
 const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
+  // 1. Profile Details
   const profileQuery = supabase.from('profiles').select('*').eq('user_id', userId).single();
-  const locationQuery = supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).single();
   
-  // Counts
-  const friendQuery = supabase.from('friendships').select('*', { count: 'exact', head: true }).eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-  const eventQuery = supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId);
-  const messageQuery = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId);
+  // 2. Location Settings
+  const locationQuery = supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).single();
 
-  // FIX: Fetch raw views and sum client-side to avoid SQL syntax errors
+  // 3. Counts (Optimized with HEAD)
+  const friendQuery = supabase
+    .from('friendships')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+
+  const eventQuery = supabase
+    .from('event_attendees')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  const messageQuery = supabase
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('sender_id', userId);
+
+  // 4. Event Views (Raw fetch to avoid SQL Sum error)
   const eventViewsQuery = supabase
     .from('events')
     .select('event_views_30d')
@@ -95,14 +110,14 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
     { count: friendCount },
     { count: eventCount },
     { count: messageCount },
-    { data: eventViewsData } // Result of the views query
+    { data: eventViewsData }
   ] = await Promise.all([
     profileQuery, locationQuery, friendQuery, eventQuery, messageQuery, eventViewsQuery
   ]);
 
   if (profileError && profileError.code !== 'PGRST116') throw profileError;
   
-  // Calculate Sum safely
+  // Client-side Sum Calculation
   const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
 
   return {
@@ -112,7 +127,7 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
       friends: friendCount || 0,
       events: eventCount || 0,
       messages: messageCount || 0,
-      event_views_30d: totalEventViews // Correctly calculated sum
+      event_views_30d: totalEventViews
     },
   };
 };
@@ -122,49 +137,41 @@ const Profile = () => {
   const { user, signOut } = useAuth();
   const queryClient = useQueryClient();
 
-  // --- Local State ---
+  // State
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  
-  // Discovery Radius (Default 5km / 5000m)
   const [discoveryRadius, setDiscoveryRadius] = useState([5000]); 
 
-  // --- Data Fetching ---
+  // Query
   const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
     queryKey: ['profile', user?.id],
     queryFn: () => fetchProfileData(user!.id),
     enabled: !!user,
-    staleTime: 1000 * 60 * 5, // Cache for 5 mins
+    staleTime: 1000 * 60 * 5, 
   });
 
   const { profile, location, stats } = data || { 
-    profile: null, 
-    location: null, 
-    stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
+    profile: null, location: null, stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
   };
 
-  // Sync local state when data arrives
+  // Effect: Sync state
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || '');
       setBio(profile.bio || '');
-      // Set radius from preferences, or default to 5000
       if (profile.preferences?.discovery_radius) {
         setDiscoveryRadius([profile.preferences.discovery_radius]);
       }
     }
   }, [profile]);
 
-  // --- Mutations ---
-
-  // 1. Update Text & Preferences
+  // Mutations
   const updateProfileMutation = useMutation({
     mutationFn: async (updates: { displayName?: string; bio?: string; preferences?: any }) => {
       const currentPrefs = profile?.preferences || {};
       const newPrefs = { ...currentPrefs, ...updates.preferences };
-
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -176,14 +183,13 @@ const Profile = () => {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success('Profile updated successfully');
+      toast.success('Profile updated');
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
-    onError: (error: Error) => toast.error('Failed to update: ' + error.message)
+    onError: (err) => toast.error('Update failed: ' + err.message)
   });
 
-  // 2. Toggle Location Sharing
   const toggleLocationMutation = useMutation({
     mutationFn: async (checked: boolean) => {
       const { error } = await supabase
@@ -194,37 +200,21 @@ const Profile = () => {
       return checked;
     },
     onSuccess: (checked) => {
-      toast.success(checked ? 'Location sharing enabled' : 'Location hidden');
+      toast.success(checked ? 'Location visible' : 'Location hidden');
       queryClient.setQueryData(['profile', user!.id], (old: any) => ({
         ...old,
         location: { ...old.location, is_sharing_location: checked }
       }));
-    },
-    onError: (error: Error) => toast.error('Failed to update location settings')
+    }
   });
   
-  // 3. Upload Avatar
   const uploadAvatarMutation = useMutation({
     mutationFn: async (file: File) => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('user_id', user!.id);
-      
-      if (updateError) throw updateError;
+      await supabase.storage.from('avatars').upload(fileName, file, { upsert: true });
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('user_id', user!.id);
       return publicUrl;
     },
     onSuccess: (url) => {
@@ -232,10 +222,9 @@ const Profile = () => {
       setAvatarPreview(null); 
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
-    onError: (error: Error) => toast.error('Upload failed: ' + error.message)
+    onError: () => toast.error('Upload failed')
   });
 
-  // 4. Delete Account
   const deleteAccountMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.rpc('delete_user'); 
@@ -244,18 +233,15 @@ const Profile = () => {
     onSuccess: async () => {
       await signOut();
       navigate('/');
-      toast.success('Account deleted successfully.');
-    },
-    onError: () => toast.error('Could not delete account. Please contact support.')
+      toast.success('Account deleted.');
+    }
   });
 
-  // --- Handlers ---
-  
+  // Handlers
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
+    if (e.target.files?.[0]) {
       const file = e.target.files[0];
-      const objectUrl = URL.createObjectURL(file);
-      setAvatarPreview(objectUrl);
+      setAvatarPreview(URL.createObjectURL(file));
       uploadAvatarMutation.mutate(file);
     }
   };
@@ -266,21 +252,14 @@ const Profile = () => {
   };
 
   const handleReferralCopy = () => {
-    // New Referral System: Link + Code
     const refCode = `LYNQ-${user?.id.slice(0, 6).toUpperCase()}`;
     const refLink = `${window.location.origin}/signup?ref=${refCode}`;
-    
     navigator.clipboard.writeText(refLink);
     toast.success("Referral link copied to clipboard!");
   };
 
-  const handleRadiusChange = (value: number[]) => {
-    setDiscoveryRadius(value);
-  };
-
-  const saveRadius = () => {
-    updateProfileMutation.mutate({ preferences: { discovery_radius: discoveryRadius[0] } });
-  };
+  const handleRadiusChange = (value: number[]) => setDiscoveryRadius(value);
+  const saveRadius = () => updateProfileMutation.mutate({ preferences: { discovery_radius: discoveryRadius[0] } });
 
   const statsList = [
     { label: 'Friends', value: stats.friends, icon: Users },
@@ -289,11 +268,7 @@ const Profile = () => {
   ];
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
   return (
@@ -324,23 +299,13 @@ const Profile = () => {
                 </AvatarFallback>
               </Avatar>
               
-              <label 
-                htmlFor="avatar-upload" 
-                className="absolute bottom-0 right-0 w-8 h-8 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-10"
-              >
+              <label className="absolute bottom-0 right-0 w-8 h-8 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-10">
                 {uploadAvatarMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Camera className="w-4 h-4" />
                 )}
-                <input 
-                  id="avatar-upload" 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
-                  onChange={handleAvatarSelect}
-                  disabled={uploadAvatarMutation.isPending}
-                />
+                <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} disabled={uploadAvatarMutation.isPending} />
               </label>
             </div>
             
@@ -370,7 +335,7 @@ const Profile = () => {
 
       <div className="container-mobile -mt-6 relative z-10 space-y-5">
         
-        {/* 30-DAY ANALYTICS (New Feature) */}
+        {/* 30-DAY INSIGHTS (New) */}
         <Card className="border-0 shadow-lg overflow-hidden bg-white/95 backdrop-blur-sm">
           <CardHeader className="pb-3 bg-muted/30 border-b px-5 pt-4">
             <div className="flex items-center justify-between">
@@ -378,7 +343,7 @@ const Profile = () => {
                 <BarChart3 className="w-4 h-4 text-primary" /> 
                 30-Day Insights
               </CardTitle>
-              <span className="text-[10px] text-muted-foreground bg-background px-2 py-1 rounded-full border">Last updated today</span>
+              <span className="text-[10px] text-muted-foreground bg-background px-2 py-1 rounded-full border">Updated today</span>
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-2 p-0">
@@ -403,7 +368,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        {/* BASIC STATS GRID */}
+        {/* STATS GRID (Original) */}
         <div className="grid grid-cols-3 gap-3">
           {statsList.map((stat, index) => {
             const Icon = stat.icon;
@@ -421,9 +386,8 @@ const Profile = () => {
           })}
         </div>
 
-        {/* REFERRAL SYSTEM (Link + Code) */}
+        {/* REFERRAL CARD (Link + Code) */}
         <Card className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white border-0 shadow-lg relative overflow-hidden">
-          {/* Decorative circles */}
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-5 -mb-5 blur-xl"></div>
           
@@ -458,7 +422,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        {/* BIO SECTION */}
+        {/* BIO SECTION (Original) */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2 px-5 pt-5">
             <CardTitle className="text-lg font-bold">About Me</CardTitle>
@@ -489,7 +453,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        {/* SETTINGS SECTION */}
+        {/* SETTINGS SECTION (Detailed) */}
         <div className="space-y-3">
           <h3 className="text-xs font-bold text-muted-foreground ml-1 uppercase tracking-wider">App Settings</h3>
           <Card className="border-0 shadow-sm overflow-hidden divide-y divide-border/50">
@@ -525,7 +489,7 @@ const Profile = () => {
                </div>
              </div>
 
-             {/* Location Toggle */}
+                          {/* Location Toggle */}
              <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
                <div className="flex items-center gap-3">
                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
