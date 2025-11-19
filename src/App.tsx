@@ -26,6 +26,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminModeration from "./pages/admin/AdminModeration";
+import AdminEvents from "./pages/admin/AdminEvents";
 
 const queryClient = new QueryClient();
 
@@ -45,7 +46,8 @@ const App = () => (
               <Route index element={<AdminDashboard />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="users" element={<AdminUsers />} />
-              <Route path="moderation" element={<AdminModeration />} />
+              <Route path="moderation" element={<AdminModeration />} /> 
+              <Route path="events" element={<AdminEvents />} />
             </Route>
 
             {/* User App Routes (With Bottom Navigation) */}
