@@ -42,7 +42,7 @@ const Premium = () => {
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- 1. CHECK SUBSCRIPTION STATUS (The Secure Way) ---
+  // --- 1. CHECK SUBSCRIPTION STATUS ---
   const { data: subscription, isLoading: isLoadingSub } = useQuery({
     queryKey: ['subscription', user?.id],
     queryFn: async () => {
@@ -57,7 +57,6 @@ const Premium = () => {
     enabled: !!user
   });
 
-  // Calculate if the user is currently active
   const isPremiumActive = useMemo(() => {
     if (!subscription) return false;
     const now = new Date();
@@ -65,7 +64,7 @@ const Premium = () => {
     return subscription.status === 'active' && endDate > now;
   }, [subscription]);
 
-  // --- 2. FETCH DYNAMIC PRICING (From Admin Settings) ---
+  // --- 2. FETCH DYNAMIC PRICING (For Bundle) ---
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ['app_settings'],
     queryFn: async () => {
@@ -126,23 +125,15 @@ const Premium = () => {
         logo: "https://lynq.app/logo.png",
       },
       callback: async function(response: any) {
-        // We rely on the webhook for the actual upgrade, 
-        // but we verify here to show immediate UI feedback
         const toastId = toast.loading("Verifying transaction...");
         try {
-          // Small delay to allow Webhook to process first (optional but safer)
           await new Promise(r => setTimeout(r, 2000));
-          
-          // Re-fetch subscription to see if webhook updated it
           await queryClient.invalidateQueries({ queryKey: ['subscription'] });
-          
-          toast.success("Welcome to Premium!", { id: toastId });
+          toast.success("Transaction successful!", { id: toastId });
           navigate('/app/profile');
-          
         } catch (err) {
           console.error(err);
-          // Even if this fails, the Webhook is the source of truth
-          toast.info("Payment received! Your account is updating...", { id: toastId });
+          toast.info("Payment received! Updating account...", { id: toastId });
           navigate('/app/profile');
         } finally {
           setIsProcessing(false);
@@ -156,7 +147,7 @@ const Premium = () => {
     window.FlutterwaveCheckout && window.FlutterwaveCheckout(config);
   };
 
-  // --- 4. UI COMPONENTS ---
+  // --- 4. FEATURES LIST (Bundle vs Single) ---
   const fullPremiumFeatures = [
     'Unlimited friend requests',
     'Advanced search filters',
@@ -166,7 +157,74 @@ const Premium = () => {
     'Ad-free experience',
   ];
 
+  // The "A La Carte" menu
+  const singleFeatures = [
+    {
+      icon: <Crown className="w-5 h-5" />,
+      title: 'Profile Visibility Boost',
+      description: 'Get 3x more profile views and friend suggestions',
+      price: { monthly: 999, yearly: 9999 }
+    },
+    {
+      icon: <TrendingUp className="w-5 h-5" />,
+      title: 'Event Promotion',
+      description: 'Promote your events to reach more people in your area',
+      price: { monthly: 1499, yearly: 14999 }
+    },
+    {
+      icon: <Star className="w-5 h-5" />,
+      title: 'Premium Badge',
+      description: 'Stand out with a special premium badge on your profile',
+      price: { monthly: 599, yearly: 4999 }
+    }
+  ];
+
   const yearlySavings = Math.round((pricing.monthly * 12) - pricing.yearly);
+
+  // --- Render Helpers ---
+  const SingleFeatureCard = ({ feature }: { feature: (typeof singleFeatures)[0] }) => (
+    <Card className="gradient-card shadow-card border-0 relative overflow-hidden hover:shadow-lg transition-shadow">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="gradient-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
+            {feature.icon}
+          </div>
+          <div>
+            <CardTitle className="text-base font-bold">{feature.title}</CardTitle>
+            <p className="text-xs text-muted-foreground leading-tight">{feature.description}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-baseline justify-between border-t border-border/50 pt-3">
+          <div>
+            <span className="text-xl font-bold">
+              ₦{billingPeriod === 'monthly' ? feature.price.monthly.toLocaleString() : feature.price.yearly.toLocaleString()}
+            </span>
+            <span className="text-xs text-muted-foreground ml-1">
+              /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
+            </span>
+          </div>
+          {billingPeriod === 'yearly' && (
+            <Badge variant="secondary" className="bg-green-100 text-green-800 text-[10px] px-1.5 h-5">
+              -30%
+            </Badge>
+          )}
+        </div>
+        <Button 
+          className="w-full gradient-primary text-white shadow-sm h-9 text-sm"
+          onClick={() => handlePayment(
+            billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly,
+            feature.title
+          )}
+          disabled={isProcessing || isPremiumActive}
+        >
+          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
+          Get This Feature
+        </Button>
+      </CardContent>
+    </Card>
+  );
 
   if (isLoadingSettings || isLoadingSub) {
     return (
@@ -199,6 +257,7 @@ const Premium = () => {
 
       <div className="container-mobile -mt-4 relative z-10 space-y-6">
         
+        {/* Billing Toggle */}
         {!isPremiumActive && (
           <div className="bg-card rounded-xl p-1.5 flex items-center shadow-sm border relative">
             <div 
@@ -219,7 +278,7 @@ const Premium = () => {
           </div>
         )}
 
-        {/* UNLIMITED PLAN CARD */}
+        {/* 1. MAIN BUNDLE CARD */}
         <Card className={`border-primary/50 shadow-lg relative overflow-hidden ${isPremiumActive ? 'bg-primary/5' : 'bg-gradient-to-br from-background to-primary/5'}`}>
            {isPremiumActive && (
              <div className="absolute top-0 right-0 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl flex items-center gap-1">
@@ -276,6 +335,16 @@ const Premium = () => {
           </CardContent>
         </Card>
 
+        {/* 2. SINGLE UPGRADES SECTION (Restored) */}
+        {!isPremiumActive && (
+          <div className="space-y-3 pt-2">
+            <h3 className="font-semibold text-sm text-muted-foreground ml-1 uppercase tracking-wider">Single Upgrades</h3>
+            {singleFeatures.map((feature, index) => (
+              <SingleFeatureCard key={index} feature={feature} />
+            ))}
+          </div>
+        )}
+
         <div className="text-center space-y-2 pb-4">
           <div className="flex items-center justify-center gap-2 text-muted-foreground">
              <AlertCircle className="w-4 h-4" />
@@ -288,4 +357,4 @@ const Premium = () => {
 };
 
 export default Premium;
-      
+        
