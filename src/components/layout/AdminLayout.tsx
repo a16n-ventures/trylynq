@@ -11,7 +11,8 @@ import {
   LogOut, 
   Menu,
   X,
-  TrendingUp
+  TrendingUp,
+  Settings
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -65,14 +66,17 @@ export default function AdminLayout() {
     );
   }
 
-  // Navigation Items
+  // Add this to your navItems array
   const navItems = [
     { label: 'Overview', path: '/admin', icon: LayoutDashboard },
     { label: 'Users', path: '/admin/users', icon: Users },
     { label: 'Events', path: '/admin/events', icon: Calendar },
     { label: 'Moderation', path: '/admin/moderation', icon: ShieldAlert },
-    { label: 'Revenue', path: '/admin/finance', icon: TrendingUp },
+    { label: 'Finance', path: '/admin/finance', icon: TrendingUp },
+    // New Item 👇
+    { label: 'System & Billing', path: '/admin/settings', icon: Settings }, 
   ];
+
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
