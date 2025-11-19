@@ -527,4 +527,134 @@ const Profile = () => {
                          Max distance: <span className="font-bold text-primary">{discoveryRadius[0]}m</span>
                       </div>
                     </div>
-            </
+                  </div>
+               </div>
+               <div className="px-1 pt-1">
+                  <Slider 
+                    value={discoveryRadius} 
+                    onValueChange={handleRadiusChange} 
+                    onValueCommit={saveRadius}
+                    max={50000} 
+                    step={500}
+                    className="cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-2 font-medium">
+                    <span>0km</span>
+                    <span>50km</span>
+                  </div>
+               </div>
+             </div>
+
+             {/* Location Toggle */}
+             <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
+               <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                   <MapPin className="w-4 h-4" />
+                 </div>
+                 <div>
+                   <div className="font-medium text-sm">Location Sharing</div>
+                   <div className="text-xs text-muted-foreground">Visible to friends on map</div>
+                 </div>
+               </div>
+               <Switch 
+                 checked={!!location?.is_sharing_location}
+                 onCheckedChange={(c) => toggleLocationMutation.mutate(c)}
+                 disabled={toggleLocationMutation.isPending}
+               />
+             </div>
+
+             {/* Notifications */}
+             <div className="p-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
+               <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
+                   <Bell className="w-4 h-4" />
+                 </div>
+                 <div>
+                   <div className="font-medium text-sm">Notifications</div>
+                   <div className="text-xs text-muted-foreground">Pause all push alerts</div>
+                 </div>
+               </div>
+               <Switch 
+                  checked={profile?.preferences?.notifications ?? true} 
+                  onCheckedChange={(c) => updateProfileMutation.mutate({ preferences: { notifications: c } })} 
+               />
+             </div>
+             
+             {/* Premium Banner */}
+             <div 
+               className="p-4 flex items-center justify-between hover:bg-amber-50/50 transition-colors cursor-pointer group" 
+               onClick={() => navigate('/premium')}
+             >
+               <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                   <Crown className="w-4 h-4" />
+                 </div>
+                 <div>
+                   <div className="font-medium text-sm text-amber-900">Lynq Premium</div>
+                   <div className="text-xs text-amber-700/70">Unlock exclusive features</div>
+                 </div>
+               </div>
+               <ChevronRight className="w-4 h-4 text-amber-400" />
+             </div>
+          </Card>
+        </div>
+
+        {/* DANGER ZONE */}
+        <div className="space-y-3 pb-8">
+          <h3 className="text-xs font-bold text-muted-foreground ml-1 uppercase tracking-wider">Account Actions</h3>
+          <Card className="border-0 shadow-sm overflow-hidden">
+            <div className="divide-y divide-border/50">
+              <div 
+                className="p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/5 text-foreground transition-colors"
+                onClick={handleSignOut}
+              >
+                <LogOut className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Sign Out</span>
+              </div>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <div className="p-4 flex items-center gap-3 cursor-pointer hover:bg-red-50 text-red-600 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                    <span className="text-sm font-medium">Delete Account</span>
+                  </div>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete your account
+                      and remove your data from our servers.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => deleteAccountMutation.mutate()}
+                    >
+                      Delete Account
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </Card>
+        </div>
+
+        {/* Footer Info */}
+        <div className="text-center pb-8 text-xs text-muted-foreground/50">
+           <p>Lynq v1.0.0 (Build 2024.11)</p>
+           <div className="flex justify-center gap-4 mt-2">
+             <span>Terms</span>
+             <span>Privacy</span>
+             <span>Help</span>
+           </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default Profile;
