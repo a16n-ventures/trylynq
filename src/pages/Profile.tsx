@@ -75,55 +75,36 @@ interface CombinedProfile {
 
 // --- Helper: Data Fetching Function ---
 const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
-  // 1. Basic Profile
-  const profileQuery = supabase
-    .from('profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-    
-  // 2. Location Settings
-  const locationQuery = supabase
-    .from('user_locations')
-    .select('is_sharing_location')
-    .eq('user_id', userId)
-    .single();
+  const profileQuery = supabase.from('profiles').select('*').eq('user_id', userId).single();
+  const locationQuery = supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).single();
+  
+  // Counts
+  const friendQuery = supabase.from('friendships').select('*', { count: 'exact', head: true }).eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  const eventQuery = supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+  const messageQuery = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId);
 
-  // 3. Counts (Using HEAD for performance)
-  const friendQuery = supabase
-    .from('friendships')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'accepted')
-    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-
-  const eventQuery = supabase
-    .from('event_attendees')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId);
-
-  const messageQuery = supabase
-    .from('messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('sender_id', userId);
-
-  // 4. AI/Analytics Data (Mocked for now if DB columns missing, usually aggregated)
-  // In production, this would come from an 'analytics_events' table
+  // FIX: Fetch raw views and sum client-side to avoid SQL syntax errors
   const eventViewsQuery = supabase
-     .from('events')
-     .select('event_views_30d.sum()') // Requires aggregate function or client-side calc
-     .eq('creator_id', userId);
+    .from('events')
+    .select('event_views_30d')
+    .eq('creator_id', userId);
 
   const [
     { data: profileData, error: profileError },
-    { data: locationData, error: locationError },
+    { data: locationData },
     { count: friendCount },
     { count: eventCount },
     { count: messageCount },
-  ] = await Promise.all([profileQuery, locationQuery, friendQuery, eventQuery, messageQuery]);
+    { data: eventViewsData } // Result of the views query
+  ] = await Promise.all([
+    profileQuery, locationQuery, friendQuery, eventQuery, messageQuery, eventViewsQuery
+  ]);
 
-  // Handle critical error (missing profile)
   if (profileError && profileError.code !== 'PGRST116') throw profileError;
   
+  // Calculate Sum safely
+  const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
+
   return {
     profile: profileData,
     location: locationData,
@@ -131,8 +112,7 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
       friends: friendCount || 0,
       events: eventCount || 0,
       messages: messageCount || 0,
-      // If your DB has these columns, use them. Else default to 0 for UI demo.
-      event_views_30d: (profileData as any)?.event_views_30d || 0 
+      event_views_30d: totalEventViews // Correctly calculated sum
     },
   };
 };
