@@ -29,6 +29,12 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="admin" element={<AdminLayout />}>
+  <Route index element={<AdminDashboard />} />
+  <Route path="settings" element={<AdminSettings />} />
+  {/* NEW ROUTE 👇 */}
+  <Route path="users" element={<AdminUsers />} />
+</Route>
             <Route path="/app" element={
               <ProtectedRoute>
                 <MainLayout />
