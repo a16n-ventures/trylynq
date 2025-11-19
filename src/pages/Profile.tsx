@@ -167,27 +167,35 @@ const Profile = () => {
     }
   }, [profile]);
 
-  // Mutations
+  // 1. Update Text & Preferences
   const updateProfileMutation = useMutation({
     mutationFn: async (updates: { displayName?: string; bio?: string; preferences?: any }) => {
       const currentPrefs = profile?.preferences || {};
       const newPrefs = { ...currentPrefs, ...updates.preferences };
+
+      // Prepare the object for Supabase (Map camelCase to snake_case)
+      const dbUpdates: any = {
+        updated_at: new Date().toISOString(),
+        preferences: newPrefs,
+      };
+
+      // Only add fields if they are present in the update request
+      if (updates.displayName !== undefined) dbUpdates.display_name = updates.displayName;
+      if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
+
       const { error } = await supabase
         .from('profiles')
-        .update({
-          ...updates,
-          preferences: newPrefs,
-          updated_at: new Date().toISOString(),
-        })
+        .update(dbUpdates)
         .eq('user_id', user!.id);
+        
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success('Profile updated');
+      toast.success('Profile updated successfully');
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
-    onError: (err) => toast.error('Update failed: ' + err.message)
+    onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
   const toggleLocationMutation = useMutation({
