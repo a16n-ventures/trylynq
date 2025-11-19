@@ -515,4 +515,35 @@ const Profile = () => {
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <div className="p-4 flex items-center gap-3 cursor-pointer hover:bg-red-50 text-red-600 transition-colors">
-                    <Trash2 className
+                    <Trash2 className="w-4 h-4" />
+                    <span className="text-sm font-medium">Delete Account</span>
+                  </div>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete your account
+                      and remove your data from our servers.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                      onClick={() => deleteAccountMutation.mutate()}
+                    >
+                      Delete Account
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Profile;
