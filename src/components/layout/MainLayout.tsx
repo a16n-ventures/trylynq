@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Users, MapPin, MessageSquare, Calendar, User, Bell } from 'lucide-react';
+import { Compass, Users, MapPin, MessageSquare, Calendar, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -14,105 +14,152 @@ const MainLayout = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('discover');
   const [profile, setProfile] = useState<any>(null);
-  const [notificationCount, setNotificationCount] = useState(3);
+  const [notificationCount, setNotificationCount] = useState(0);
 
+  // Navigation Configuration
   const tabs = [
     { id: 'discover', icon: Compass, label: 'Discover', path: '/app/discover' },
     { id: 'friends', icon: Users, label: 'Friends', path: '/app/friends' },
     { id: 'map', icon: MapPin, label: 'Map', path: '/app/map' },
-    { id: 'messages', icon: MessageSquare, label: 'Messages', path: '/app/messages' },
+    { id: 'messages', icon: MessageSquare, label: 'Chats', path: '/app/messages' },
     { id: 'events', icon: Calendar, label: 'Events', path: '/app/events' },
   ];
 
+  // Sync Tab with URL
   useEffect(() => {
-    const currentTab = tabs.find(tab => tab.path === location.pathname);
-    if (currentTab) {
-      setActiveTab(currentTab.id);
-    }
+    const currentTab = tabs.find(tab => location.pathname.includes(tab.path));
+    if (currentTab) setActiveTab(currentTab.id);
   }, [location.pathname]);
 
+  // Fetch Profile & Notification Count
   useEffect(() => {
-    if (user) {
-      supabase
-        .from('profiles')
-        .select('id, user_id, display_name, avatar_url, bio, location, created_at')
+    if (!user) return;
+
+    // 1. Get Profile
+    supabase
+      .from('profiles')
+      .select('id, user_id, display_name, avatar_url')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data }) => setProfile(data));
+
+    // 2. Get Initial Unread Count
+    const fetchNotifications = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .single()
-        .then(({ data }) => setProfile(data));
-    }
+        .eq('read', false);
+      setNotificationCount(count || 0);
+    };
+    fetchNotifications();
+
+    // 3. Realtime Subscription for Notifications
+    const channel = supabase
+      .channel('notifications_counter')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => {
+          setNotificationCount((prev) => prev + 1);
+          // Optional: Play a sound here
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Top Bar */}
-      <header className="sticky top-0 z-50 bg-background border-b border-border">
-        <div className="container-mobile flex items-center justify-between py-3">
-          {/* Profile - Top Left */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-2"
+    <div className="min-h-screen bg-background flex flex-col font-sans">
+      
+      {/* Top Header (Glassmorphism) */}
+      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50 transition-all">
+        <div className="container-mobile flex items-center justify-between py-3 px-4">
+          
+          {/* Profile Link */}
+          <div 
+            className="flex items-center gap-3 cursor-pointer group"
             onClick={() => navigate('/app/profile')}
           >
-            <Avatar className="w-8 h-8">
-              <AvatarImage src={profile?.avatar_url || undefined} />
-              <AvatarFallback>{profile?.display_name?.[0] || user?.email?.[0] || 'U'}</AvatarFallback>
-            </Avatar>
-            <span className="text-sm font-medium hidden sm:inline">{profile?.display_name || 'Profile'}</span>
-          </Button>
+            <div className="relative">
+              <Avatar className="w-9 h-9 border border-border group-hover:border-primary transition-colors">
+                <AvatarImage src={profile?.avatar_url || undefined} className="object-cover" />
+                <AvatarFallback className="bg-muted text-muted-foreground">
+                  {profile?.display_name?.[0] || user?.email?.[0] || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              {/* Online Status Dot */}
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-background rounded-full"></span>
+            </div>
+            <div className="flex flex-col">
+               <span className="text-sm font-bold leading-none group-hover:text-primary transition-colors">
+                 {profile?.display_name || 'Welcome'}
+               </span>
+               <span className="text-[10px] text-muted-foreground">Online</span>
+            </div>
+          </div>
 
-          {/* Notification - Top Right */}
+          {/* Notification Bell */}
           <Button
             variant="ghost"
             size="icon"
-            className="relative"
-            onClick={() => navigate('/app/notifications')}
+            className="relative hover:bg-muted/50 rounded-full h-10 w-10"
+            onClick={() => {
+              setNotificationCount(0); // Optimistic clear
+              navigate('/app/notifications');
+            }}
           >
-            <Bell className="w-5 h-5" />
+            <Bell className="w-5 h-5 text-foreground/80" />
             {notificationCount > 0 && (
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                {notificationCount}
-              </Badge>
+              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse ring-2 ring-background" />
             )}
           </Button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 pb-20">
+      {/* Main Content Area */}
+      <main className="flex-1 pb-24 overflow-x-hidden animate-in fade-in duration-300">
         <Outlet />
       </main>
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
+      {/* Bottom Navigation Dock */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-lg border-t border-border/50 pb-safe">
         <div className="container-mobile">
-          <div className="flex items-center justify-around py-2">
+          <div className="flex items-center justify-between px-2 py-2">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               
               return (
-                <Button
+                <button
                   key={tab.id}
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "flex flex-col items-center gap-1 h-auto py-3 px-2 transition-smooth",
-                    isActive && "text-primary"
-                  )}
                   onClick={() => {
                     setActiveTab(tab.id);
                     navigate(tab.path);
                   }}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 w-16 py-2 rounded-2xl transition-all duration-200 active:scale-95",
+                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/20"
+                  )}
                 >
                   <div className={cn(
-                    "p-2 rounded-xl transition-smooth",
-                    isActive ? "gradient-primary text-white shadow-primary" : "hover:bg-muted"
+                    "relative p-1.5 rounded-xl transition-all",
+                    isActive && "bg-primary/10"
                   )}>
-                    <Icon className="w-5 h-5" />
+                    <Icon className={cn("w-5 h-5 transition-transform", isActive && "scale-110")} strokeWidth={isActive ? 2.5 : 2} />
+                    
+                    {/* Active Glow Dot */}
+                    {isActive && (
+                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />
+                    )}
                   </div>
-                  <span className="text-xs font-medium">{tab.label}</span>
-                </Button>
+                  <span className="text-[10px] font-medium tracking-wide">
+                    {tab.label}
+                  </span>
+                </button>
               );
             })}
           </div>
@@ -123,3 +170,4 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
+      
