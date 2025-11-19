@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { MapPin, Users, MessageCircle, Shield, Sparkles, ArrowRight, Globe } from 'lucide-react';
-import heroImage from '@/assets/hero-image.jpg'; // Ensure this image exists or use fallback color
+import { 
+  MapPin, Users, MessageCircle, Shield, Sparkles, ArrowRight, 
+  Globe, Smartphone, Download, Play, Apple, Twitter, Instagram, Linkedin,
+  Copyright
+} from 'lucide-react';
+import heroImage from '@/assets/hero-image.jpg';
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +16,7 @@ const Index = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const { user } = useAuth();
   const navigate = useNavigate();
+  const currentYear = new Date().getFullYear();
 
   useEffect(() => {
     if (user) {
@@ -31,15 +36,34 @@ const Index = () => {
     { icon: <Sparkles className="w-6 h-6" />, title: "Events", desc: "Host parties & sell tickets." },
   ];
 
+  const footerLinks = {
+    company: [
+      { label: "About Us", href: "#" },
+      { label: "Careers", href: "#" },
+      { label: "Investors", href: "#" },
+      { label: "Status", href: "#" },
+    ],
+    legal: [
+      { label: "Privacy Policy", href: "#" },
+      { label: "Terms of Use", href: "#" },
+      { label: "Cookie Policy", href: "#" },
+    ],
+    support: [
+      { label: "Help Center", href: "#" },
+      { label: "Safety Center", href: "#" },
+      { label: "Contact Us", href: "#" },
+    ]
+  };
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col font-sans">
       
       {/* HERO SECTION */}
       <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
         
         {/* Background Image with Gradient Overlay */}
         <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-background z-10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-background z-10" />
           <img 
             src={heroImage} 
             onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=2070&auto=format&fit=crop'}
@@ -85,22 +109,22 @@ const Index = () => {
       </section>
 
       {/* FEATURES GRID */}
-      <section className="py-20 px-4 bg-background">
+      <section className="py-24 px-4 bg-background">
         <div className="container-mobile">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-2">Everything you need</h2>
-            <p className="text-muted-foreground">Built for real-life connections.</p>
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Everything you need</h2>
+            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">Built for real-life connections, keeping privacy and ease-of-use in mind.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((f, i) => (
-              <Card key={i} className="border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg group">
+              <Card key={i} className="border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg group bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-6 flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                     {f.icon}
                   </div>
                   <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
-                  <p className="text-sm text-muted-foreground">{f.desc}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
                 </CardContent>
               </Card>
             ))}
@@ -108,15 +132,128 @@ const Index = () => {
         </div>
       </section>
 
-      {/* FOOTER CTA */}
-      <section className="py-12 bg-muted/30 border-t border-border">
-        <div className="container-mobile text-center">
-          <h2 className="text-2xl font-bold mb-6">Ready to jump in?</h2>
-          <Button variant="link" onClick={() => handleAuth('signup')} className="text-primary text-lg group">
-            Create your account <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-          </Button>
+      {/* DOWNLOAD APP SECTION */}
+      <section className="py-20 bg-muted/30 border-y border-border relative overflow-hidden">
+        <div className="container-mobile relative z-10">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
+            
+            <div className="flex-1 text-center lg:text-left space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wider">
+                <Smartphone className="w-3 h-3" /> Mobile App
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Take Lynq with you everywhere.</h2>
+              <p className="text-lg text-muted-foreground max-w-md mx-auto lg:mx-0">
+                Get the full experience on your phone. Real-time location sharing, instant notifications, and smoother chatting.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start pt-2">
+                {/* Android Button */}
+                <Button className="h-14 px-6 rounded-xl bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-3 shadow-lg">
+                   <Play className="w-6 h-6 fill-current" />
+                   <div className="text-left">
+                     <div className="text-[10px] uppercase font-medium opacity-80">Get it on</div>
+                     <div className="text-base font-bold leading-none">Google Play</div>
+                   </div>
+                </Button>
+
+                {/* iOS Button (Disabled/Coming Soon) */}
+                <Button variant="outline" disabled className="h-14 px-6 rounded-xl border-2 border-dashed border-muted-foreground/30 bg-transparent text-muted-foreground flex items-center gap-3 cursor-not-allowed opacity-70">
+                   <Apple className="w-6 h-6 pb-1" />
+                   <div className="text-left">
+                     <div className="text-[10px] uppercase font-medium">Coming Soon to</div>
+                     <div className="text-base font-bold leading-none">App Store</div>
+                   </div>
+                </Button>
+              </div>
+            </div>
+
+            {/* App Preview Graphic (Placeholder Style) */}
+            <div className="flex-1 relative w-full max-w-sm lg:max-w-md mx-auto">
+               <div className="relative aspect-[9/18] rounded-[2.5rem] border-8 border-gray-900 bg-gray-800 shadow-2xl overflow-hidden">
+                  {/* Screen Content */}
+                  <div className="absolute inset-0 bg-background flex flex-col">
+                    {/* Fake Map UI */}
+                    <div className="flex-1 bg-muted/20 relative p-4">
+                       <div className="absolute top-1/4 left-1/4 w-8 h-8 bg-blue-500 rounded-full border-4 border-white shadow-lg animate-bounce" />
+                       <div className="absolute top-1/2 right-1/3 w-8 h-8 bg-purple-500 rounded-full border-4 border-white shadow-lg" />
+                       <div className="absolute bottom-1/3 left-1/2 w-8 h-8 bg-green-500 rounded-full border-4 border-white shadow-lg" />
+                    </div>
+                    {/* Fake Bottom Nav */}
+                    <div className="h-16 bg-white border-t flex justify-around items-center px-4">
+                      <div className="w-8 h-8 rounded-full bg-gray-100" />
+                      <div className="w-8 h-8 rounded-full bg-blue-100" />
+                      <div className="w-8 h-8 rounded-full bg-gray-100" />
+                    </div>
+                  </div>
+                  {/* Notch */}
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-6 bg-gray-900 rounded-b-2xl" />
+               </div>
+               
+               {/* Decorative blobs */}
+               <div className="absolute -z-10 top-10 -right-10 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl" />
+               <div className="absolute -z-10 bottom-10 -left-10 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl" />
+            </div>
+
+          </div>
         </div>
       </section>
+
+      {/* FOOTER */}
+      <footer className="bg-background border-t border-border pt-16 pb-8">
+        <div className="container-mobile px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+            
+            <div className="col-span-2 md:col-span-1">
+              <h3 className="font-bold text-xl mb-4 tracking-tight gradient-primary bg-clip-text text-transparent inline-block">Lynq</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+                Connecting friends, communities, and events in the real world.
+              </p>
+              <div className="flex gap-4">
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Twitter className="w-5 h-5" /></a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Instagram className="w-5 h-5" /></a>
+                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Linkedin className="w-5 h-5" /></a>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Company</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {footerLinks.company.map((link, i) => (
+                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Legal</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {footerLinks.legal.map((link, i) => (
+                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Support</h4>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                 {footerLinks.support.map((link, i) => (
+                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Copyright className="w-3 h-3" /> 
+              <span>{currentYear} Lynq. All rights reserved.</span>
+            </div>
+            <div className="flex items-center gap-6">
+               <span>Made with ❤️ for connection</span>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <AuthModal 
         open={showAuth} 
@@ -129,4 +266,4 @@ const Index = () => {
 };
 
 export default Index;
-        
+      
