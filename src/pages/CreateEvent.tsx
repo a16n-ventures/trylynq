@@ -11,10 +11,13 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQueryClient } from '@tanstack/react-query'; // <--- 1. Added Import
 
 const CreateEvent = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient(); // <--- 2. Initialize Client
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -114,7 +117,12 @@ const CreateEvent = () => {
       if (error) throw error;
 
       toast.success('Event created successfully!');
+      
+      // <--- 3. Force Refresh of Events List --->
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
+
       navigate('/app/events'); // Redirect to events list
+      
     } catch (error: any) {
       console.error('Error creating event:', error);
       toast.error('Failed to create event: ' + error.message);
@@ -405,4 +413,3 @@ const CreateEvent = () => {
 };
 
 export default CreateEvent;
-        
