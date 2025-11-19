@@ -13,11 +13,21 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
-// --- TYPES ---
+// --- TYPES (UPDATED TO MATCH DB) ---
 interface Profile { id: string; username: string | null; avatar_url: string | null; }
 interface Story { id: string; media_url: string; media_type: 'image' | 'video'; caption?: string; created_at: string; user_id: string; }
 interface Community { id: string; name: string; member_count: number | null; description: string | null; avatar_url: string | null; }
-interface Event { id: string; name: string; event_date: string | null; location: string | null; image_url?: string; match_score?: number; }
+
+// FIX: Updated to match 'events' table columns
+interface Event { 
+  id: string; 
+  title: string;       // Changed from 'name'
+  start_date: string;  // Changed from 'event_date'
+  location: string | null; 
+  image_url?: string; 
+  match_score?: number; 
+}
+
 type ProfileWithStoryInner = Profile & { stories: { id: string; created_at: string }[]; };
 
 // --- UI COMPONENTS ---
@@ -118,18 +128,40 @@ export default function Discover() {
   useEffect(() => {
     if (!user) return;
     const init = async () => {
+      // 1. Profiles
       const { data: me } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setCurrentUserProfile(me);
+      
       const yesterday = new Date(Date.now() - 864e5).toISOString();
       const { data: storyData } = await supabase.from('profiles').select('id, username, avatar_url, stories!inner(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
       if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, i])).values()));
 
+      // 2. Communities
       const { data: comms } = await supabase.from('communities').select('*').limit(5);
       setCommunities(comms || []);
       
-      const { data: evts } = await supabase.from('events').select('*').gte('start_date', new Date().toISOString()).limit(5);
-      setEvents(evts || []);
+      // 3. Events (FIX: Use CORRECT DB Column Names)
+      // We select all (*) so title and start_date come through.
+      // We map them manually below to match our UI interface.
+      const { data: evts } = await supabase
+        .from('events')
+        .select('*')
+        .gte('start_date', new Date().toISOString())
+        .limit(5);
+      
+      if (evts) {
+        // Map DB columns (title, start_date) to UI Types (name, event_date)
+        const mappedEvents: Event[] = evts.map((e: any) => ({
+          id: e.id,
+          title: e.title,          // UI expects title now
+          start_date: e.start_date,// UI expects start_date now
+          location: e.location,
+          image_url: e.image_url
+        }));
+        setEvents(mappedEvents);
+      }
 
+      // 4. Premium & AI
       const { data: sub } = await supabase.from('subscriptions').select('status').eq('user_id', user.id).single();
       const prem = sub?.status === 'active';
       setIsPremium(prem);
@@ -139,8 +171,8 @@ export default function Discover() {
         if (ai) {
           const formatted: Event[] = ai.map((item: any) => ({
             id: item.id,
-            name: item.title, // Correct mapping
-            event_date: item.start_date, // Correct mapping
+            title: item.title,      // Map RPC title
+            start_date: item.start_date, // Map RPC start_date
             location: item.location,
             image_url: item.image_url,
             match_score: item.match_score
@@ -148,6 +180,7 @@ export default function Discover() {
           setSmartFeed(formatted);
         }
       }
+
       setLoading(false);
     };
     init();
@@ -171,7 +204,7 @@ export default function Discover() {
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
-      {/* Stories */}
+      {/* STORIES TRAY */}
       <div className="w-full overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
         {loading ? <div className="flex gap-4"><div className="w-16 h-16 bg-muted rounded-full animate-pulse" /></div> : (
           <div className="flex gap-4 items-start">
@@ -208,7 +241,7 @@ export default function Discover() {
         </DialogContent>
       </Dialog>
 
-      {/* Tabs */}
+      {/* TABS */}
       <div className="px-1">
         <h1 className="text-2xl font-bold mb-4 tracking-tight">Discover</h1>
         <Tabs defaultValue="communities">
@@ -233,7 +266,7 @@ export default function Discover() {
             )}
           </TabsContent>
 
-          {/* Events */}
+          {/* Events (FIXED UI TO USE TITLE/START_DATE) */}
           <TabsContent value="events" className="mt-6 space-y-3 animate-in fade-in-50">
             {loading ? <FeedSkeleton /> : events.length === 0 ? (
                <EmptyState icon={Calendar} title="No Upcoming Events" desc="It's quiet... too quiet. Host a party!" action="Create Event" onAction={() => navigate('/create-event')} />
@@ -241,10 +274,10 @@ export default function Discover() {
               events.map(e => (
                 <Card key={e.id} className="hover:shadow-md transition-all border-border/50"><CardContent className="p-4 flex items-center gap-4">
                     <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0">
-                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">{new Date(e.event_date!).toLocaleString('default', {month:'short'})}</span>
-                      <span className="text-xl font-bold leading-none">{new Date(e.event_date!).getDate()}</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">{new Date(e.start_date).toLocaleString('default', {month:'short'})}</span>
+                      <span className="text-xl font-bold leading-none">{new Date(e.start_date).getDate()}</span>
                     </div>
-                    <div className="flex-1 min-w-0"><h3 className="font-bold text-base truncate">{e.name}</h3><div className="flex items-center gap-1 text-sm text-muted-foreground mt-1"><MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span></div></div>
+                    <div className="flex-1 min-w-0"><h3 className="font-bold text-base truncate">{e.title}</h3><div className="flex items-center gap-1 text-sm text-muted-foreground mt-1"><MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span></div></div>
                     <Button size="sm" variant="outline" className="rounded-full">View</Button>
                 </CardContent></Card>
               ))
@@ -259,12 +292,12 @@ export default function Discover() {
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center relative z-10">
                   <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-4 backdrop-blur-md shadow-inner border border-white/20"><Lock className="w-8 h-8 text-white drop-shadow-lg" /></div>
                   <h3 className="text-xl font-bold mb-2">Unlock AI Insights</h3>
-                  <p className="text-white/70 max-w-xs mb-6 text-sm leading-relaxed">See events matched to your interests and friends' activity with an 80x boost in relevance.</p>
-                  <Button variant="secondary" className="font-bold shadow-lg hover:scale-105 transition-transform" onClick={() => navigate('/premium')}>Upgrade to Premium</Button>
+                  <p className="text-white/70 max-w-xs mb-6 text-sm leading-relaxed">See events matched to your interests.</p>
+                  <Button variant="secondary" className="font-bold shadow-lg" onClick={() => navigate('/premium')}>Upgrade to Premium</Button>
                 </CardContent>
               </Card>
             ) : smartFeed.length === 0 ? (
-               <EmptyState icon={RefreshCw} title="Analyzing..." desc="AI is learning your preferences. Check back soon." action="Refresh" onAction={() => window.location.reload()} />
+               <EmptyState icon={RefreshCw} title="Analyzing..." desc="AI is learning your preferences." action="Refresh" onAction={() => window.location.reload()} />
             ) : (
               smartFeed.map(e => (
                 <Card key={e.id} className="overflow-hidden border-purple-200 dark:border-purple-900 shadow-sm hover:shadow-md transition-all">
@@ -272,7 +305,7 @@ export default function Discover() {
                     {e.image_url && <img src={e.image_url} className="w-full h-full object-cover" />}
                     <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-md flex gap-1 font-bold items-center"><Sparkles className="w-3 h-3 text-yellow-400" /> {(e.match_score || 95).toFixed(0)}% Match</div>
                   </div>
-                  <CardContent className="p-4"><h3 className="font-bold truncate text-lg">{e.name}</h3><p className="text-sm text-muted-foreground flex items-center gap-1 mt-1"><MapPin className="w-3 h-3" /> {e.location}</p></CardContent>
+                  <CardContent className="p-4"><h3 className="font-bold truncate text-lg">{e.title}</h3><p className="text-sm text-muted-foreground flex items-center gap-1 mt-1"><MapPin className="w-3 h-3" /> {e.location}</p></CardContent>
                 </Card>
               ))
             )}
@@ -283,4 +316,3 @@ export default function Discover() {
     </div>
   );
 }
-                     
