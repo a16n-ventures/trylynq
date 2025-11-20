@@ -158,17 +158,33 @@ export default function Messages() {
   });
 
   const createCommunity = useMutation({
-    mutationFn: async () => {
-      if (!user) return;
-      await supabase.from('communities').insert({ name: newCommName, description: newCommDesc, creator_id: user.id, member_count: 1 });
-    },
-    onSuccess: () => {
-      setIsCreateCommunityOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['comm_list'] });
-      toast.success("Community created");
-    }
-  });
+  mutationFn: async () => {
+    if (!user) return;
+    
+    const { data, error } = await supabase.from('communities').insert({ 
+      name: newCommName, 
+      description: newCommDesc, 
+      creator_id: user.id, 
+      member_count: 1 
+    })
+    .select() // <--- Important: Asks Supabase to return the created row
+    .single();
 
+    if (error) throw error; // <--- This triggers the onError block
+    return data;
+  },
+  onSuccess: () => {
+    setIsCreateCommunityOpen(false);
+    setNewCommName(''); // Clear the form
+    setNewCommDesc('');
+    queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+    toast.success("Community created");
+  },
+  onError: (error) => {
+    toast.error(`Failed to create: ${error.message}`); // Now you will see WHY it failed
+  }
+});
+  
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [messages]);
