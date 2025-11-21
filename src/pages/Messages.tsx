@@ -538,58 +538,81 @@ export default function Messages() {
   const [newCommName, setNewCommName] = useState('');
   const [newCommDesc, setNewCommDesc] = useState('');
 
-// --- QUERIES ---
+  // --- QUERIES ---
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
-    queryKey: ['dm_list'],
+    queryKey: ['dm_list', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase
-        .from('messages')
-        .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
+          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .order('created_at', { ascending: false });
 
-      const map = new Map();
-      data?.forEach((msg: any) => {
-        const partner = msg.sender_id === user.id ? msg.receiver : msg.sender;
-        if (!map.has(partner.user_id)) {
-          map.set(partner.user_id, {
-            type: 'dm',
-            id: partner.user_id,
-            partner_id: partner.user_id,
-            name: partner.display_name,
-            avatar: partner.avatar_url,
-            last_msg: msg.content || '📷 Photo',
-            time: msg.created_at,
-            is_online: false
-          });
+        if (error) {
+          console.error('DM query error:', error);
+          return [];
         }
-      });
-      return Array.from(map.values());
-    }
+
+        const map = new Map();
+        data?.forEach((msg: any) => {
+          const partner = msg.sender_id === user.id ? msg.receiver : msg.sender;
+          if (partner && !map.has(partner.user_id)) {
+            map.set(partner.user_id, {
+              type: 'dm',
+              id: partner.user_id,
+              partner_id: partner.user_id,
+              name: partner.display_name || 'Unknown User',
+              avatar: partner.avatar_url,
+              last_msg: msg.content || '📷 Photo',
+              time: msg.created_at,
+              is_online: false
+            });
+          }
+        });
+        return Array.from(map.values());
+      } catch (e) {
+        console.error('DM fetch error:', e);
+        return [];
+      }
+    },
+    enabled: !!user
   });
 
   const { data: commList = [], isLoading: loadingComms } = useQuery({
-    queryKey: ['comm_list'],
+    queryKey: ['comm_list', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('communities')
-        .select(`*, members:community_members(user_id, role)`);
-      if (error) throw error;
-      return data?.map((c: any) => {
-        const myMembership = c.members.find((m: any) => m.user_id === user?.id);
-        return {
-          type: 'community',
-          id: c.id,
-          name: c.name,
-          description: c.description,
-          avatar: c.avatar_url,
-          member_count: c.member_count,
-          my_role: myMembership ? myMembership.role : 'none',
-          is_joined: !!myMembership
-        };
-      }) || [];
-    }
+      if (!user) return [];
+      try {
+        const { data, error } = await supabase
+          .from('communities')
+          .select(`*, members:community_members(user_id, role)`);
+        
+        if (error) {
+          console.error('Community query error:', error);
+          return [];
+        }
+
+        return data?.map((c: any) => {
+          const myMembership = c.members?.find((m: any) => m.user_id === user?.id);
+          return {
+            type: 'community',
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            avatar: c.avatar_url,
+            member_count: c.member_count || 0,
+            my_role: myMembership ? myMembership.role : 'none',
+            is_joined: !!myMembership
+          };
+        }) || [];
+      } catch (e) {
+        console.error('Community fetch error:', e);
+        return [];
+      }
+    },
+    enabled: !!user
   });
 
   const { data: friends = [] } = useQuery({
@@ -617,32 +640,38 @@ export default function Messages() {
     queryKey: ['messages', selectedChat?.type, selectedChat?.id],
     queryFn: async () => {
       if (!user || !selectedChat) return [];
-      let data;
-      if (selectedChat.type === 'dm') {
-        const res = await supabase
-          .from('messages')
-          .select('*')
-          .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`)
-          .order('created_at', { ascending: true });
-        data = res.data;
-      } else {
-        const res = await supabase
-          .from('community_messages')
-          .select('*, sender:profiles!sender_id(display_name, avatar_url)')
-          .eq('community_id', selectedChat.id)
-          .order('created_at', { ascending: true });
-        data = res.data?.map((m: any) => ({ 
+      try {
+        let data;
+        if (selectedChat.type === 'dm') {
+          const res = await supabase
+            .from('messages')
+            .select('*')
+            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`)
+            .order('created_at', { ascending: true });
+          data = res.data;
+        } else {
+          const res = await supabase
+            .from('community_messages')
+            .select('*, sender:profiles!sender_id(display_name, avatar_url)')
+            .eq('community_id', selectedChat.id)
+            .order('created_at', { ascending: true });
+          data = res.data?.map((m: any) => ({ 
+            ...m, 
+            sender_name: m.sender?.display_name, 
+            sender_avatar: m.sender?.avatar_url 
+          }));
+        }
+        return data?.map((m: any) => ({ 
           ...m, 
-          sender_name: m.sender?.display_name, 
-          sender_avatar: m.sender?.avatar_url 
-        }));
+          is_me: m.sender_id === user.id,
+          is_deleted: m.is_deleted || false
+        })) as Message[] || [];
+      } catch (e) {
+        console.error('Messages fetch error:', e);
+        return [];
       }
-      return data?.map((m: any) => ({ 
-        ...m, 
-        is_me: m.sender_id === user.id 
-      })) as Message[] || [];
     },
-    enabled: !!selectedChat,
+    enabled: !!selectedChat && !!user,
     refetchInterval: 3000
   });
 
@@ -767,7 +796,7 @@ export default function Messages() {
   });
 
   // --- HANDLERS ---
-const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
       if (file.size > 5 * 1024 * 1024) {
@@ -786,7 +815,7 @@ const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
-  useEffect(() => {
+useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -1044,7 +1073,7 @@ const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         </Button>
       </div>
 
-      <Tabs 
+            <Tabs 
         value={activeTab} 
         onValueChange={(v) => setActiveTab(v as ChatMode)} 
         className="w-full flex-1 flex flex-col"
