@@ -538,7 +538,7 @@ export default function Messages() {
   const [newCommName, setNewCommName] = useState('');
   const [newCommDesc, setNewCommDesc] = useState('');
 
-  // --- QUERIES ---
+// --- QUERIES ---
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list'],
     queryFn: async () => {
@@ -551,4 +551,219 @@ export default function Messages() {
 
       const map = new Map();
       data?.forEach((msg: any) => {
-        const par
+        const partner = msg.sender_id === user.id ? msg.receiver : msg.sender;
+        if (!map.has(partner.user_id)) {
+          map.set(partner.user_id, {
+            type: 'dm',
+            id: partner.user_id,
+            partner_id: partner.user_id,
+            name: partner.display_name,
+            avatar: partner.avatar_url,
+            last_msg: msg.content || '📷 Photo',
+            time: msg.created_at,
+            is_online: false
+          });
+        }
+      });
+      return Array.from(map.values());
+    }
+  });
+
+  const { data: commList = [], isLoading: loadingComms } = useQuery({
+    queryKey: ['comm_list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('communities')
+        .select(`*, members:community_members(user_id, role)`);
+      if (error) throw error;
+      return data?.map((c: any) => {
+        const myMembership = c.members.find((m: any) => m.user_id === user?.id);
+        return {
+          type: 'community',
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          avatar: c.avatar_url,
+          member_count: c.member_count,
+          my_role: myMembership ? myMembership.role : 'none',
+          is_joined: !!myMembership
+        };
+      }) || [];
+    }
+  });
+
+  const { data: friends = [] } = useQuery({
+    queryKey: ['my_friends'],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id, requester:profiles!requester_id(*), addressee:profiles!addressee_id(*)')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+      return data?.map((f: any) => {
+        const profile = f.requester_id === user.id ? f.addressee : f.requester;
+        return { 
+          id: profile.user_id, 
+          name: profile.display_name, 
+          avatar: profile.avatar_url 
+        };
+      }) || [];
+    },
+    enabled: isNewChatOpen
+  });
+
+  const { data: messages = [] } = useQuery({
+    queryKey: ['messages', selectedChat?.type, selectedChat?.id],
+    queryFn: async () => {
+      if (!user || !selectedChat) return [];
+      let data;
+      if (selectedChat.type === 'dm') {
+        const res = await supabase
+          .from('messages')
+          .select('*')
+          .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`)
+          .order('created_at', { ascending: true });
+        data = res.data;
+      } else {
+        const res = await supabase
+          .from('community_messages')
+          .select('*, sender:profiles!sender_id(display_name, avatar_url)')
+          .eq('community_id', selectedChat.id)
+          .order('created_at', { ascending: true });
+        data = res.data?.map((m: any) => ({ 
+          ...m, 
+          sender_name: m.sender?.display_name, 
+          sender_avatar: m.sender?.avatar_url 
+        }));
+      }
+      return data?.map((m: any) => ({ 
+        ...m, 
+        is_me: m.sender_id === user.id 
+      })) as Message[] || [];
+    },
+    enabled: !!selectedChat,
+    refetchInterval: 3000
+  });
+
+  // --- MUTATIONS ---
+  const joinCommunity = useMutation({
+    mutationFn: async (communityId: string) => {
+      const { error } = await supabase
+        .from('community_members')
+        .insert({ 
+          community_id: communityId, 
+          user_id: user!.id, 
+          role: 'member' 
+        });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Joined community!");
+      queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+    }
+  });
+
+  const createCommunity = useMutation({
+    mutationFn: async () => {
+      if (!user) return;
+      const { data: comm, error } = await supabase
+        .from('communities')
+        .insert({ 
+          name: newCommName, 
+          description: newCommDesc, 
+          creator_id: user.id, 
+          member_count: 1 
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      await supabase
+        .from('community_members')
+        .insert({ 
+          community_id: comm.id, 
+          user_id: user.id, 
+          role: 'admin' 
+        });
+      return comm;
+    },
+    onSuccess: () => {
+      setIsCreateCommunityOpen(false);
+      setNewCommName('');
+      setNewCommDesc('');
+      queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+      toast.success("Community created!");
+    },
+    onError: (e: any) => toast.error(e.message)
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: async () => {
+      if ((!messageInput.trim() && !imageFile) || !selectedChat || !user) return;
+      
+      let imageUrl = null;
+      
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase
+          .storage
+          .from('chat-attachments')
+          .upload(filePath, imageFile);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabase
+          .storage
+          .from('chat-attachments')
+          .getPublicUrl(filePath);
+        imageUrl = publicUrl;
+      }
+
+      const payload = { 
+        sender_id: user.id, 
+        content: messageInput.trim() || null, 
+        image_url: imageUrl 
+      };
+      
+      if (selectedChat.type === 'dm') {
+        await supabase
+          .from('messages')
+          .insert({ ...payload, receiver_id: selectedChat.partner_id });
+      } else {
+        await supabase
+          .from('community_messages')
+          .insert({ ...payload, community_id: selectedChat.id });
+      }
+    },
+    onSuccess: () => {
+      setMessageInput('');
+      setImageFile(null);
+      setImagePreview(null);
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      queryClient.invalidateQueries({ queryKey: ['dm_list'] });
+    },
+    onError: (e: any) => toast.error("Failed to send: " + e.message)
+  });
+
+  const deleteMessage = useMutation({
+    mutationFn: async (messageId: string) => {
+      if (!selectedChat) return;
+      
+      if (selectedChat.type === 'dm') {
+        await supabase
+          .from('messages')
+          .update({ is_deleted: true, content: null, image_url: null })
+          .eq('id', messageId);
+      } else {
+        await supabase
+          .from('community_messages')
+          .update({ is_deleted: true, content: null, image_url: null })
+          .eq('id', messageId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      toast.success("Message deleted");
+    }
+  });
+
+  // --- HANDLERS ---
