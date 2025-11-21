@@ -60,7 +60,16 @@ interface CommunityMember {
 }
 
 type SelectedChat = 
-  | { type: 'dm'; id: string; partner_id: string; name: string; avatar?: string; is_online?: boolean; }
+  | {
+      type: 'dm';
+      id: string;
+      partner_id: string;
+      name: string;
+      avatar?: string;
+      is_online?: boolean;
+      last_msg?: string;
+      time?: string;
+    }
   | { 
       type: 'community'; 
       id: string; 
@@ -69,6 +78,7 @@ type SelectedChat =
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
+      is_joined?: boolean;
     };
 
 // --- HELPER: Safe Date Formatting ---
