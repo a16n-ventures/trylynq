@@ -3,9 +3,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { 
   Users, Calendar, MapPin, X, Loader2, Plus, 
-  Heart, Share2, Sparkles, Lock, RefreshCw
+  Heart, Share2, Sparkles, Lock, RefreshCw, Check,
+  Clock, Ticket, ExternalLink
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,22 +15,154 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
-// --- TYPES (UPDATED TO MATCH DB) ---
+// --- TYPES ---
 interface Profile { id: string; username: string | null; avatar_url: string | null; }
 interface Story { id: string; media_url: string; media_type: 'image' | 'video'; caption?: string; created_at: string; user_id: string; }
-interface Community { id: string; name: string; member_count: number | null; description: string | null; avatar_url: string | null; }
+interface Community { 
+  id: string; 
+  name: string; 
+  member_count: number | null; 
+  description: string | null; 
+  avatar_url: string | null;
+  is_member?: boolean;
+  my_role?: 'admin' | 'member' | null;
+}
 
-// FIX: Updated to match 'events' table columns
 interface Event { 
   id: string; 
-  title: string;       // Changed from 'name'
-  start_date: string;  // Changed from 'event_date'
+  title: string;
+  start_date: string;
   location: string | null; 
   image_url?: string; 
-  match_score?: number; 
+  match_score?: number;
+  description?: string;
+  end_date?: string;
+  price?: number;
+  attendee_count?: number;
+  is_attending?: boolean;
 }
 
 type ProfileWithStoryInner = Profile & { stories: { id: string; created_at: string }[]; };
+
+// --- EVENT DETAIL MODAL ---
+function EventDetailModal({ event, isOpen, onClose, onRSVP }: { 
+  event: Event | null; 
+  isOpen: boolean; 
+  onClose: () => void;
+  onRSVP: (eventId: string) => void;
+}) {
+  if (!event) return null;
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+        {event.image_url && (
+          <div className="w-full h-48 bg-muted relative">
+            <img 
+              src={event.image_url} 
+              alt={event.title}
+              className="w-full h-full object-cover"
+            />
+            {event.match_score && (
+              <Badge className="absolute top-4 right-4 bg-black/60 backdrop-blur-md">
+                <Sparkles className="w-3 h-3 mr-1 text-yellow-400" />
+                {event.match_score.toFixed(0)}% Match
+              </Badge>
+            )}
+          </div>
+        )}
+        
+        <div className="p-6 space-y-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">{event.title}</h2>
+            {event.description && (
+              <p className="text-muted-foreground">{event.description}</p>
+            )}
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-start gap-3">
+              <Calendar className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium">When</p>
+                <p className="text-sm text-muted-foreground">{formatDate(event.start_date)}</p>
+                {event.end_date && (
+                  <p className="text-sm text-muted-foreground">to {formatDate(event.end_date)}</p>
+                )}
+              </div>
+            </div>
+
+            {event.location && (
+              <div className="flex items-start gap-3">
+                <MapPin className="w-5 h-5 text-primary mt-0.5" />
+                <div>
+                  <p className="font-medium">Where</p>
+                  <p className="text-sm text-muted-foreground">{event.location}</p>
+                </div>
+              </div>
+            )}
+
+            {event.price !== undefined && (
+              <div className="flex items-start gap-3">
+                <Ticket className="w-5 h-5 text-primary mt-0.5" />
+                <div>
+                  <p className="font-medium">Price</p>
+                  <p className="text-sm text-muted-foreground">
+                    {event.price === 0 ? 'Free' : `$${event.price}`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {event.attendee_count !== undefined && (
+              <div className="flex items-start gap-3">
+                <Users className="w-5 h-5 text-primary mt-0.5" />
+                <div>
+                  <p className="font-medium">Attendees</p>
+                  <p className="text-sm text-muted-foreground">{event.attendee_count} going</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 border-t pt-4">
+            <Button variant="outline" onClick={onClose}>Close</Button>
+            <Button 
+              onClick={() => {
+                onRSVP(event.id);
+                onClose();
+              }}
+              className={event.is_attending ? "bg-green-600 hover:bg-green-700" : ""}
+            >
+              {event.is_attending ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Going
+                </>
+              ) : (
+                <>
+                  <Ticket className="w-4 h-4 mr-2" />
+                  RSVP
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // --- UI COMPONENTS ---
 const FeedSkeleton = () => (
@@ -116,6 +250,7 @@ export default function Discover() {
   const [events, setEvents] = useState<Event[]>([]);
   const [smartFeed, setSmartFeed] = useState<Event[]>([]);
   const [selectedStory, setSelectedStory] = useState<Profile | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
@@ -136,27 +271,58 @@ export default function Discover() {
       const { data: storyData } = await supabase.from('profiles').select('id, username, avatar_url, stories!inner(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
       if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, i])).values()));
 
-      // 2. Communities
-      const { data: comms } = await supabase.from('communities').select('*').limit(5);
-      setCommunities(comms || []);
+      // 2. Communities with membership status
+      const { data: comms } = await supabase.from('communities').select(`
+        *,
+        community_members!inner(user_id, role)
+      `).limit(20);
       
-      // 3. Events (FIX: Use CORRECT DB Column Names)
-      // We select all (*) so title and start_date come through.
-      // We map them manually below to match our UI interface.
+      if (comms) {
+        const enrichedComms: Community[] = comms.map((c: any) => {
+          const myMembership = c.community_members?.find((m: any) => m.user_id === user.id);
+          return {
+            id: c.id,
+            name: c.name,
+            member_count: c.member_count,
+            description: c.description,
+            avatar_url: c.avatar_url,
+            is_member: !!myMembership,
+            my_role: myMembership?.role || null
+          };
+        });
+        setCommunities(enrichedComms);
+      }
+      
+      // 3. Events with RSVP status
       const { data: evts } = await supabase
         .from('events')
         .select('*')
         .gte('start_date', new Date().toISOString())
-        .limit(5);
+        .order('start_date', { ascending: true })
+        .limit(20);
       
       if (evts) {
-        // Map DB columns (title, start_date) to UI Types (name, event_date)
+        // Check RSVP status for each event
+        const eventIds = evts.map((e: any) => e.id);
+        const { data: rsvps } = await supabase
+          .from('event_attendees')
+          .select('event_id')
+          .eq('user_id', user.id)
+          .in('event_id', eventIds);
+
+        const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []);
+
         const mappedEvents: Event[] = evts.map((e: any) => ({
           id: e.id,
-          title: e.title,          // UI expects title now
-          start_date: e.start_date,// UI expects start_date now
+          title: e.title,
+          start_date: e.start_date,
+          end_date: e.end_date,
           location: e.location,
-          image_url: e.image_url
+          image_url: e.image_url,
+          description: e.description,
+          price: e.price,
+          attendee_count: e.attendee_count,
+          is_attending: rsvpSet.has(e.id)
         }));
         setEvents(mappedEvents);
       }
@@ -167,12 +333,17 @@ export default function Discover() {
       setIsPremium(prem);
 
       if (prem) {
-        const { data: ai } = await supabase.rpc('get_smart_feed', { viewer_id: user.id, user_lat: 6.5, user_long: 3.3, user_interests: ['tech'] });
+        const { data: ai } = await supabase.rpc('get_smart_feed', { 
+          viewer_id: user.id, 
+          user_lat: 6.5, 
+          user_long: 3.3, 
+          user_interests: ['tech'] 
+        });
         if (ai) {
           const formatted: Event[] = ai.map((item: any) => ({
             id: item.id,
-            title: item.title,      // Map RPC title
-            start_date: item.start_date, // Map RPC start_date
+            title: item.title,
+            start_date: item.start_date,
             location: item.location,
             image_url: item.image_url,
             match_score: item.match_score
@@ -194,19 +365,97 @@ export default function Discover() {
       const path = `${user.id}/${Date.now()}.${ext}`;
       await supabase.storage.from('stories').upload(path, preview.file);
       const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(path);
-      await supabase.from('stories').insert({ user_id: user.id, media_url: publicUrl, media_type: preview.file.type.startsWith('video') ? 'video' : 'image', caption });
+      await supabase.from('stories').insert({ 
+        user_id: user.id, 
+        media_url: publicUrl, 
+        media_type: preview.file.type.startsWith('video') ? 'video' : 'image', 
+        caption 
+      });
       toast.success("Story posted!");
       setPreview(null);
+      setCaption("");
       window.location.reload();
-    } catch (e) { toast.error("Upload failed"); }
+    } catch (e) { 
+      toast.error("Upload failed"); 
+    }
     setUploading(false);
+  };
+
+  const handleJoinCommunity = async (communityId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase.from('community_members').insert({
+        community_id: communityId,
+        user_id: user.id,
+        role: 'member'
+      });
+      
+      if (error) throw error;
+      
+      toast.success("Joined community!");
+      
+      // Update local state
+      setCommunities(prev => prev.map(c => 
+        c.id === communityId 
+          ? { ...c, is_member: true, my_role: 'member', member_count: (c.member_count || 0) + 1 }
+          : c
+      ));
+    } catch (e: any) {
+      toast.error(e.message || "Failed to join");
+    }
+  };
+
+  const handleRSVP = async (eventId: string) => {
+    if (!user) return;
+    try {
+      const event = events.find(e => e.id === eventId);
+      
+      if (event?.is_attending) {
+        // Cancel RSVP
+        await supabase.from('event_attendees').delete().match({
+          event_id: eventId,
+          user_id: user.id
+        });
+        toast.success("RSVP cancelled");
+      } else {
+        // Create RSVP
+        await supabase.from('event_attendees').insert({
+          event_id: eventId,
+          user_id: user.id
+        });
+        toast.success("You're going! 🎉");
+      }
+      
+      // Update local state
+      setEvents(prev => prev.map(e => 
+        e.id === eventId 
+          ? { 
+              ...e, 
+              is_attending: !e.is_attending,
+              attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
+            }
+          : e
+      ));
+      
+      setSmartFeed(prev => prev.map(e => 
+        e.id === eventId 
+          ? { ...e, is_attending: !e.is_attending }
+          : e
+      ));
+    } catch (e: any) {
+      toast.error(e.message || "Failed to RSVP");
+    }
   };
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
       {/* STORIES TRAY */}
       <div className="w-full overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
-        {loading ? <div className="flex gap-4"><div className="w-16 h-16 bg-muted rounded-full animate-pulse" /></div> : (
+        {loading ? (
+          <div className="flex gap-4">
+            <div className="w-16 h-16 bg-muted rounded-full animate-pulse" />
+          </div>
+        ) : (
           <div className="flex gap-4 items-start">
             <div className="flex flex-col items-center gap-2 flex-shrink-0 relative cursor-pointer group" onClick={() => fileRef.current?.click()}>
               <input type="file" ref={fileRef} className="hidden" accept="image/*,video/*" onChange={(e) => e.target.files?.[0] && setPreview({ file: e.target.files[0], url: URL.createObjectURL(e.target.files[0]) })} />
@@ -228,7 +477,7 @@ export default function Discover() {
         )}
       </div>
 
-      <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
+            <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
         <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-0">
           <DialogHeader><DialogTitle>Create Story</DialogTitle></DialogHeader>
           <div className="aspect-[9/16] bg-black/10 rounded-xl overflow-hidden flex items-center justify-center relative border">
@@ -257,29 +506,103 @@ export default function Discover() {
               <EmptyState icon={Users} title="No Communities Yet" desc="Be the first to start a tribe in your area." action="Create Community" onAction={() => navigate('/app/messages')} />
             ) : (
               communities.map(c => (
-                <Card key={c.id} className="hover:shadow-md transition-all border-border/50 cursor-pointer"><CardContent className="p-4 flex gap-4 items-center">
+                <Card key={c.id} className="hover:shadow-md transition-all border-border/50 cursor-pointer">
+                  <CardContent className="p-4 flex gap-4 items-center">
                     <img src={c.avatar_url || '/default-avatar.png'} className="w-14 h-14 rounded-2xl bg-muted object-cover" />
-                    <div className="flex-1 min-w-0"><h3 className="font-semibold truncate text-lg">{c.name}</h3><p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p><div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium"><Users className="w-3 h-3" /> {c.member_count} members</div></div>
-                    <Button size="sm" variant="secondary" className="rounded-full px-4">Join</Button>
-                </CardContent></Card>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold truncate text-lg">{c.name}</h3>
+                        {c.is_member && (
+                          <Badge variant="secondary" className="text-xs">
+                            {c.my_role === 'admin' ? 'Admin' : 'Joined'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
+                      <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
+                        <Users className="w-3 h-3" /> {c.member_count} members
+                      </div>
+                    </div>
+                    {c.is_member ? (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="rounded-full px-4"
+                        onClick={() => navigate('/app/messages')}
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        Open
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        variant="secondary" 
+                        className="rounded-full px-4"
+                        onClick={() => handleJoinCommunity(c.id)}
+                      >
+                        Join
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
               ))
             )}
           </TabsContent>
 
-          {/* Events (FIXED UI TO USE TITLE/START_DATE) */}
+          {/* Events */}
           <TabsContent value="events" className="mt-6 space-y-3 animate-in fade-in-50">
             {loading ? <FeedSkeleton /> : events.length === 0 ? (
                <EmptyState icon={Calendar} title="No Upcoming Events" desc="It's quiet... too quiet. Host a party!" action="Create Event" onAction={() => navigate('/create-event')} />
             ) : (
               events.map(e => (
-                <Card key={e.id} className="hover:shadow-md transition-all border-border/50"><CardContent className="p-4 flex items-center gap-4">
+                <Card 
+                  key={e.id} 
+                  className="hover:shadow-md transition-all border-border/50 cursor-pointer"
+                  onClick={() => setSelectedEvent(e)}
+                >
+                  <CardContent className="p-4 flex items-center gap-4">
                     <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0">
-                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">{new Date(e.start_date).toLocaleString('default', {month:'short'})}</span>
-                      <span className="text-xl font-bold leading-none">{new Date(e.start_date).getDate()}</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
+                        {new Date(e.start_date).toLocaleString('default', {month:'short'})}
+                      </span>
+                      <span className="text-xl font-bold leading-none">
+                        {new Date(e.start_date).getDate()}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0"><h3 className="font-bold text-base truncate">{e.title}</h3><div className="flex items-center gap-1 text-sm text-muted-foreground mt-1"><MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span></div></div>
-                    <Button size="sm" variant="outline" className="rounded-full">View</Button>
-                </CardContent></Card>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-base truncate">{e.title}</h3>
+                        {e.is_attending && (
+                          <Badge className="bg-green-600 text-xs">
+                            <Check className="w-3 h-3 mr-1" />
+                            Going
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                        <MapPin className="w-3.5 h-3.5" /> 
+                        <span className="truncate">{e.location}</span>
+                      </div>
+                      {e.attendee_count !== undefined && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                          <Users className="w-3 h-3" />
+                          {e.attendee_count} attending
+                        </div>
+                      )}
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant={e.is_attending ? "default" : "outline"}
+                      className="rounded-full"
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        setSelectedEvent(e);
+                      }}
+                    >
+                      View
+                    </Button>
+                  </CardContent>
+                </Card>
               ))
             )}
           </TabsContent>
@@ -300,19 +623,39 @@ export default function Discover() {
                <EmptyState icon={RefreshCw} title="Analyzing..." desc="AI is learning your preferences." action="Refresh" onAction={() => window.location.reload()} />
             ) : (
               smartFeed.map(e => (
-                <Card key={e.id} className="overflow-hidden border-purple-200 dark:border-purple-900 shadow-sm hover:shadow-md transition-all">
+                <Card 
+                  key={e.id} 
+                  className="overflow-hidden border-purple-200 dark:border-purple-900 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => setSelectedEvent(e)}
+                >
                   <div className="h-32 bg-muted relative">
                     {e.image_url && <img src={e.image_url} className="w-full h-full object-cover" />}
-                    <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-md flex gap-1 font-bold items-center"><Sparkles className="w-3 h-3 text-yellow-400" /> {(e.match_score || 95).toFixed(0)}% Match</div>
+                    <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-md flex gap-1 font-bold items-center">
+                      <Sparkles className="w-3 h-3 text-yellow-400" /> 
+                      {(e.match_score || 95).toFixed(0)}% Match
+                    </div>
                   </div>
-                  <CardContent className="p-4"><h3 className="font-bold truncate text-lg">{e.title}</h3><p className="text-sm text-muted-foreground flex items-center gap-1 mt-1"><MapPin className="w-3 h-3" /> {e.location}</p></CardContent>
+                  <CardContent className="p-4">
+                    <h3 className="font-bold truncate text-lg">{e.title}</h3>
+                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                      <MapPin className="w-3 h-3" /> {e.location}
+                    </p>
+                  </CardContent>
                 </Card>
               ))
             )}
           </TabsContent>
         </Tabs>
       </div>
+      
       {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} />}
+      
+      <EventDetailModal 
+        event={selectedEvent}
+        isOpen={!!selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onRSVP={handleRSVP}
+      />
     </div>
   );
 }
