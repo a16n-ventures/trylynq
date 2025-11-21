@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Search, Send, ArrowLeft, Plus, Settings, Users, 
   MessageSquare, Paperclip, X, Image as ImageIcon, Loader2, 
-  MoreVertical, Phone, Video, Smile, Info, UserPlus,
-  Shield, Trash2, Ban, Volume2, VolumeX, Crown, Check
+  MoreVertical, Phone, Video, Info, UserPlus,
+  Shield, Trash2, Ban, Crown
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,19 +23,7 @@ import {
   DropdownMenuContent, 
   DropdownMenuItem, 
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 // --- TYPES ---
 type ChatMode = 'dm' | 'community';
@@ -292,12 +280,12 @@ const CommunityInfoDialog = ({
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Avatar className="h-10 w-10">
                         <AvatarImage src={m.profile.avatar_url} />
-                        <AvatarFallback>{m.profile.display_name[0]}</AvatarFallback>
+                        <AvatarFallback>{m.profile.display_name?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">
-                            {m.profile.display_name}
+                            {m.profile.display_name || 'Unknown User'}
                           </span>
                           {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
                         </div>
@@ -329,8 +317,6 @@ const CommunityInfoDialog = ({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Manage Member</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
                           {community.my_role === 'admin' && m.role !== 'moderator' && (
                             <DropdownMenuItem 
                               onClick={() => promoteMutation.mutate({ userId: m.user_id, newRole: 'moderator' })}
@@ -347,7 +333,6 @@ const CommunityInfoDialog = ({
                               Remove Moderator
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             className="text-red-600"
                             onClick={() => kickMutation.mutate(m.user_id)}
@@ -386,7 +371,6 @@ const CommunitySettingsDialog = ({
   const queryClient = useQueryClient();
   const [name, setName] = useState(currentName);
   const [desc, setDesc] = useState(currentDesc);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -404,114 +388,75 @@ const CommunitySettingsDialog = ({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      // Delete all members first
-      await supabase
-        .from('community_members')
-        .delete()
-        .eq('community_id', communityId);
-      
-      // Delete all messages
-      await supabase
-        .from('community_messages')
-        .delete()
-        .eq('community_id', communityId);
-      
-      // Delete community
-      await supabase
-        .from('communities')
-        .delete()
-        .eq('id', communityId);
+      await supabase.from('community_members').delete().eq('community_id', communityId);
+      await supabase.from('community_messages').delete().eq('community_id', communityId);
+      await supabase.from('communities').delete().eq('id', communityId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       toast.success("Community deleted");
-      setShowDeleteDialog(false);
       onClose();
     }
   });
 
+  const handleDelete = () => {
+    if (window.confirm("Are you sure? This will delete all messages and members permanently.")) {
+        deleteMutation.mutate();
+    }
+  };
+
   return (
-    <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Community Settings</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Community Name</Label>
-              <Input 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
-                placeholder="Enter community name"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea 
-                value={desc} 
-                onChange={(e) => setDesc(e.target.value)} 
-                placeholder="Describe your community..."
-                rows={3}
-              />
-            </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Community Settings</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Community Name</Label>
+            <Input 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              placeholder="Enter community name"
+            />
           </div>
+          
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea 
+              value={desc} 
+              onChange={(e) => setDesc(e.target.value)} 
+              placeholder="Describe your community..."
+              rows={3}
+            />
+          </div>
+        </div>
 
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button 
-              variant="destructive" 
-              className="w-full sm:w-auto"
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Community
+        <DialogFooter className="flex-col gap-2 sm:flex-row">
+          <Button 
+            variant="destructive" 
+            className="w-full sm:w-auto"
+            onClick={handleDelete}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Community
+          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+              Cancel
             </Button>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
-                Cancel
-              </Button>
-              <Button 
-                onClick={() => updateMutation.mutate()} 
-                disabled={updateMutation.isPending || !name.trim()}
-                className="flex-1 sm:flex-none"
-              >
-                {updateMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  'Save Changes'
-                )}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Community?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. All messages and member data will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteMutation.mutate()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <Button 
+              onClick={() => updateMutation.mutate()} 
+              disabled={updateMutation.isPending || !name.trim()}
+              className="flex-1 sm:flex-none"
             >
-              {deleteMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                'Delete Community'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+              {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -550,10 +495,7 @@ export default function Messages() {
           .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
           .order('created_at', { ascending: false });
 
-        if (error) {
-          console.error('DM query error:', error);
-          return [];
-        }
+        if (error) return [];
 
         const map = new Map();
         data?.forEach((msg: any) => {
@@ -573,7 +515,6 @@ export default function Messages() {
         });
         return Array.from(map.values());
       } catch (e) {
-        console.error('DM fetch error:', e);
         return [];
       }
     },
@@ -589,10 +530,7 @@ export default function Messages() {
           .from('communities')
           .select(`*, members:community_members(user_id, role)`);
         
-        if (error) {
-          console.error('Community query error:', error);
-          return [];
-        }
+        if (error) return [];
 
         return data?.map((c: any) => {
           const myMembership = c.members?.find((m: any) => m.user_id === user?.id);
@@ -608,7 +546,6 @@ export default function Messages() {
           };
         }) || [];
       } catch (e) {
-        console.error('Community fetch error:', e);
         return [];
       }
     },
@@ -667,7 +604,6 @@ export default function Messages() {
           is_deleted: m.is_deleted || false
         })) as Message[] || [];
       } catch (e) {
-        console.error('Messages fetch error:', e);
         return [];
       }
     },
@@ -729,44 +665,24 @@ export default function Messages() {
   const sendMessage = useMutation({
     mutationFn: async () => {
       if ((!messageInput.trim() && !imageFile) || !selectedChat || !user) return;
-      
       let imageUrl = null;
-      
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase
-          .storage
-          .from('chat-attachments')
-          .upload(filePath, imageFile);
+        const { error: uploadError } = await supabase.storage.from('chat-attachments').upload(filePath, imageFile);
         if (uploadError) throw uploadError;
-        const { data: { publicUrl } } = supabase
-          .storage
-          .from('chat-attachments')
-          .getPublicUrl(filePath);
+        const { data: { publicUrl } } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
         imageUrl = publicUrl;
       }
-
-      const payload = { 
-        sender_id: user.id, 
-        content: messageInput.trim() || null, 
-        image_url: imageUrl 
-      };
-      
+      const payload = { sender_id: user.id, content: messageInput.trim() || null, image_url: imageUrl };
       if (selectedChat.type === 'dm') {
-        await supabase
-          .from('messages')
-          .insert({ ...payload, receiver_id: selectedChat.partner_id });
+        await supabase.from('messages').insert({ ...payload, receiver_id: selectedChat.partner_id });
       } else {
-        await supabase
-          .from('community_messages')
-          .insert({ ...payload, community_id: selectedChat.id });
+        await supabase.from('community_messages').insert({ ...payload, community_id: selectedChat.id });
       }
     },
     onSuccess: () => {
-      setMessageInput('');
-      setImageFile(null);
-      setImagePreview(null);
+      setMessageInput(''); setImageFile(null); setImagePreview(null);
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       queryClient.invalidateQueries({ queryKey: ['dm_list'] });
     },
@@ -776,50 +692,40 @@ export default function Messages() {
   const deleteMessage = useMutation({
     mutationFn: async (messageId: string) => {
       if (!selectedChat) return;
-      
       if (selectedChat.type === 'dm') {
-        await supabase
-          .from('messages')
-          .update({ is_deleted: true, content: null, image_url: null })
-          .eq('id', messageId);
+        await supabase.from('messages').update({ is_deleted: true, content: null, image_url: null }).eq('id', messageId);
       } else {
-        await supabase
-          .from('community_messages')
-          .update({ is_deleted: true, content: null, image_url: null })
-          .eq('id', messageId);
+        await supabase.from('community_messages').update({ is_deleted: true, content: null, image_url: null }).eq('id', messageId);
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages'] });
-      toast.success("Message deleted");
-    }
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['messages'] }); toast.success("Message deleted"); }
   });
 
   // --- HANDLERS ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("File too large (max 5MB)");
-        return;
-      }
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      if (file.size > 5 * 1024 * 1024) { toast.error("File too large (max 5MB)"); return; }
+      setImageFile(file); setImagePreview(URL.createObjectURL(file));
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage.mutate();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage.mutate(); }
   };
 
-useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+  useEffect(() => {
+    if (scrollRef.current) { scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }
   }, [messages, imagePreview]);
+
+  // --- LOADING STATE (PREVENTS CRASH) ---
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // --- RENDER: CHAT VIEW ---
   if (selectedChat) {
@@ -828,524 +734,133 @@ useEffect(() => {
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
 
     return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col h-[100dvh]">
-        
-        {/* Header */}
+      <div className="fixed inset-0 z-50 bg-background flex flex-col h-screen">
         <div className="px-4 py-3 border-b flex items-center gap-3 bg-background/95 backdrop-blur shadow-sm shrink-0 z-10">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="-ml-2 rounded-full" 
-            onClick={() => setSelectedChat(null)}
-          >
+          <Button variant="ghost" size="icon" className="-ml-2 rounded-full" onClick={() => setSelectedChat(null)}>
             <ArrowLeft className="h-6 w-6" />
           </Button>
-          
           <Avatar className="h-10 w-10 border">
             <AvatarImage src={selectedChat.avatar} />
             <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
           </Avatar>
-          
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
             <h3 className="font-semibold text-sm truncate">{selectedChat.name}</h3>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {isComm ? (
                 <>
-                  <Users className="w-3 h-3" /> 
-                  {selectedChat.member_count} members
-                  {selectedChat.my_role === 'admin' && (
-                    <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
-                      <Crown className="w-2.5 h-2.5 mr-0.5" />
-                      Admin
-                    </Badge>
-                  )}
-                  {selectedChat.my_role === 'moderator' && (
-                    <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
-                      <Shield className="w-2.5 h-2.5 mr-0.5" />
-                      Mod
-                    </Badge>
-                  )}
+                  <Users className="w-3 h-3" /> {selectedChat.member_count} members
+                  {selectedChat.my_role === 'admin' && <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0"><Crown className="w-2.5 h-2.5 mr-0.5" />Admin</Badge>}
                 </>
-              ) : (
-                <span className="flex items-center gap-1 text-green-600">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/>
-                  Online
-                </span>
-              )}
+              ) : <span className="flex items-center gap-1 text-green-600"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Online</span>}
             </p>
           </div>
-          
           <div className="flex items-center gap-1">
-            {!isComm && (
-              <>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <Phone className="w-5 h-5 text-muted-foreground" />
-                </Button>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <Video className="w-5 h-5 text-muted-foreground" />
-                </Button>
-              </>
-            )}
+            {!isComm && <><Button variant="ghost" size="icon" className="rounded-full"><Phone className="w-5 h-5 text-muted-foreground" /></Button><Button variant="ghost" size="icon" className="rounded-full"><Video className="w-5 h-5 text-muted-foreground" /></Button></>}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <MoreVertical className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="rounded-full"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
-                  <Info className="w-4 h-4 mr-2" />
-                  {isComm ? 'Community Info' : 'View Profile'}
-                </DropdownMenuItem>
-                {isComm && selectedChat.my_role === 'admin' && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Settings
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-red-600">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {isComm ? 'Leave Community' : 'Delete Conversation'}
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsInfoOpen(true)}><Info className="w-4 h-4 mr-2" />{isComm ? 'Community Info' : 'View Profile'}</DropdownMenuItem>
+                {isComm && selectedChat.my_role === 'admin' && <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}><Settings className="w-4 h-4 mr-2" />Settings</DropdownMenuItem>}
+                <DropdownMenuItem className="text-red-600"><Trash2 className="w-4 h-4 mr-2" />{isComm ? 'Leave Community' : 'Delete Conversation'}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
 
-        {/* Dialogs */}
         {isComm && (
           <>
-            <CommunityInfoDialog 
-              isOpen={isInfoOpen}
-              onClose={() => setIsInfoOpen(false)}
-              community={selectedChat}
-            />
-            {selectedChat.my_role === 'admin' && (
-              <CommunitySettingsDialog 
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-                communityId={selectedChat.id}
-                currentName={selectedChat.name}
-                currentDesc={selectedChat.description || ''}
-              />
-            )}
+            <CommunityInfoDialog isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} community={selectedChat} />
+            {selectedChat.my_role === 'admin' && <CommunitySettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} communityId={selectedChat.id} currentName={selectedChat.name} currentDesc={selectedChat.description || ''} />}
           </>
         )}
 
-        {/* Messages Area */}
-        <div 
-          className="flex-1 overflow-y-auto bg-muted/10 p-4 scroll-smooth" 
-          ref={scrollRef}
-        >
+        <div className="flex-1 overflow-y-auto bg-muted/10 p-4 scroll-smooth" ref={scrollRef}>
           <div className="flex flex-col justify-end min-h-full pb-2">
             {messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-50 py-12">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                  <MessageSquare className="w-8 h-8 text-primary" />
-                </div>
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4"><MessageSquare className="w-8 h-8 text-primary" /></div>
                 <h3 className="font-semibold text-lg mb-1">Start the conversation</h3>
-                <p className="text-sm text-muted-foreground text-center max-w-xs">
-                  {isComm 
-                    ? "Be the first to send a message in this community" 
-                    : "Send a message to start chatting"}
-                </p>
               </div>
-            ) : (
-              messages.map((m, i) => (
-                <MessageBubble 
-                  key={m.id} 
-                  msg={m} 
-                  prevMsg={i > 0 ? messages[i-1] : null} 
-                  isComm={isComm}
-                  canModerate={canModerate}
-                  onDelete={(msgId) => deleteMessage.mutate(msgId)}
-                />
-              ))
-            )}
+            ) : messages.map((m, i) => (
+              <MessageBubble key={m.id} msg={m} prevMsg={i > 0 ? messages[i-1] : null} isComm={isComm} canModerate={canModerate} onDelete={(msgId) => deleteMessage.mutate(msgId)} />
+            ))}
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="p-3 border-t bg-background shrink-0 safe-area-bottom">
+        <div className="p-3 border-t bg-background shrink-0 pb-safe">
           {canType ? (
             <div className="flex flex-col gap-3">
-              {/* Image Preview */}
               {imagePreview && (
                 <div className="relative w-24 h-24 bg-muted rounded-xl overflow-hidden border-2 border-primary/20">
-                  <img 
-                    src={imagePreview} 
-                    className="w-full h-full object-cover" 
-                    alt="preview" 
-                  />
-                  <button 
-                    onClick={() => { 
-                      setImageFile(null); 
-                      setImagePreview(null); 
-                    }} 
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <img src={imagePreview} className="w-full h-full object-cover" alt="preview" />
+                  <button onClick={() => { setImageFile(null); setImagePreview(null); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"><X className="w-4 h-4" /></button>
                 </div>
               )}
-
               <div className="flex items-end gap-2">
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
-                  ref={fileInputRef} 
-                  onChange={handleFileSelect} 
-                />
-                
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="rounded-full text-muted-foreground hover:text-primary shrink-0" 
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Paperclip className="w-5 h-5" />
-                </Button>
-                
+                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+                <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary shrink-0" onClick={() => fileInputRef.current?.click()}><Paperclip className="w-5 h-5" /></Button>
                 <div className="flex-1 relative">
-                  <Textarea 
-                    value={messageInput} 
-                    onChange={(e) => setMessageInput(e.target.value)} 
-                    placeholder="Type a message..." 
-                    className="min-h-[44px] max-h-32 py-3 pr-10 resize-none rounded-2xl bg-muted/50 border-transparent focus:border-primary focus:bg-background transition-all"
-                    onKeyDown={handleKeyPress}
-                  />
+                  <Textarea value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="Type a message..." className="min-h-[44px] max-h-32 py-3 pr-10 resize-none rounded-2xl bg-muted/50 border-transparent focus:border-primary focus:bg-background transition-all" onKeyDown={handleKeyPress} />
                 </div>
-
-                <Button 
-                  size="icon" 
-                  onClick={() => sendMessage.mutate()} 
-                  disabled={sendMessage.isPending || (!messageInput.trim() && !imageFile)}
-                  className="rounded-full h-11 w-11 shadow-md shrink-0"
-                >
-                  {sendMessage.isPending ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Send className="w-5 h-5 ml-0.5" />
-                  )}
+                <Button size="icon" onClick={() => sendMessage.mutate()} disabled={sendMessage.isPending || (!messageInput.trim() && !imageFile)} className="rounded-full h-11 w-11 shadow-md shrink-0">
+                  {sendMessage.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
                 </Button>
               </div>
             </div>
-          ) : (
-            <Button 
-              className="w-full rounded-xl shadow-md" 
-              onClick={() => joinCommunity.mutate(selectedChat.id)}
-              disabled={joinCommunity.isPending}
-            >
-              {joinCommunity.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <UserPlus className="w-4 h-4 mr-2" />
-              )}
-              Join Community to Chat
-            </Button>
-          )}
+          ) : <Button className="w-full rounded-xl shadow-md" onClick={() => joinCommunity.mutate(selectedChat.id)} disabled={joinCommunity.isPending}>{joinCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}Join Community to Chat</Button>}
         </div>
       </div>
     );
   }
 
-  // --- RENDER: LIST VIEW ---
   return (
     <div className="container-mobile pt-6 min-h-screen flex flex-col pb-20 bg-background">
       <div className="flex items-center justify-between mb-6 px-1">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
-          <p className="text-muted-foreground text-sm font-medium mt-1">
-            Connect with your circle
-          </p>
-        </div>
-        <Button 
-          size="icon" 
-          className="rounded-full shadow-lg bg-primary hover:bg-primary/90 h-10 w-10" 
-          onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)}
-        >
-          <Plus className="h-5 w-5" />
-        </Button>
+        <div><h1 className="text-3xl font-bold tracking-tight">Messages</h1><p className="text-muted-foreground text-sm font-medium mt-1">Connect with your circle</p></div>
+        <Button size="icon" className="rounded-full shadow-lg bg-primary hover:bg-primary/90 h-10 w-10" onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)}><Plus className="h-5 w-5" /></Button>
       </div>
 
-            <Tabs 
-        value={activeTab} 
-        onValueChange={(v) => setActiveTab(v as ChatMode)} 
-        className="w-full flex-1 flex flex-col"
-      >
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatMode)} className="w-full flex-1 flex flex-col">
         <div className="px-1 mb-4">
           <div className="bg-muted/50 p-1 rounded-xl flex">
-            <TabsTrigger 
-              value="dm" 
-              className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
-            >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Direct
-            </TabsTrigger>
-            <TabsTrigger 
-              value="community" 
-              className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Communities
-            </TabsTrigger>
+            <TabsTrigger value="dm" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"><MessageSquare className="w-4 h-4 mr-2" />Direct</TabsTrigger>
+            <TabsTrigger value="community" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"><Users className="w-4 h-4 mr-2" />Communities</TabsTrigger>
           </div>
-          
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search conversations..." 
-              className="pl-10 bg-muted/30 border-transparent rounded-xl focus:bg-background focus:border-primary/20 transition-all" 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-            />
-          </div>
+          <div className="relative mt-4"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search conversations..." className="pl-10 bg-muted/30 border-transparent rounded-xl focus:bg-background focus:border-primary/20 transition-all" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
         </div>
 
         <TabsContent value="dm" className="flex-1 space-y-2 animate-in fade-in-50 px-1 mt-0">
-          {loadingDMs ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-              Loading chats...
+          {loadingDMs ? <div className="p-8 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Loading chats...</div> : dmList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center opacity-60"><div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4"><MessageSquare className="w-8 h-8 text-muted-foreground" /></div><h3 className="font-semibold text-lg mb-2">No messages yet</h3><p className="text-sm text-muted-foreground mb-4">Start a conversation with your friends</p><Button variant="outline" onClick={() => setIsNewChatOpen(true)}><Plus className="w-4 h-4 mr-2" />New Message</Button></div>
+          ) : dmList.filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map((chat: any) => (
+            <div key={chat.id} onClick={() => setSelectedChat(chat)} className="group flex items-center gap-4 p-3 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all border border-transparent hover:border-border/50 active:scale-[0.98]">
+              <div className="relative"><Avatar className="h-14 w-14 border-2 border-background shadow-sm"><AvatarImage src={chat.avatar} /><AvatarFallback>{chat.name[0]}</AvatarFallback></Avatar><span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full"></span></div>
+              <div className="flex-1 min-w-0 space-y-1"><div className="flex justify-between items-center"><h3 className="font-bold text-base truncate">{chat.name}</h3><span className="text-[11px] text-muted-foreground font-medium">{new Date(chat.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div><p className="text-sm text-muted-foreground truncate font-medium opacity-80">{chat.last_msg}</p></div>
             </div>
-          ) : dmList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center opacity-60">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                <MessageSquare className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">No messages yet</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Start a conversation with your friends
-              </p>
-              <Button variant="outline" onClick={() => setIsNewChatOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Message
-              </Button>
-            </div>
-          ) : (
-            dmList
-              .filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map((chat: any) => (
-                <div 
-                  key={chat.id} 
-                  onClick={() => setSelectedChat(chat)} 
-                  className="group flex items-center gap-4 p-3 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all border border-transparent hover:border-border/50 active:scale-[0.98]"
-                >
-                  <div className="relative">
-                    <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
-                      <AvatarImage src={chat.avatar} />
-                      <AvatarFallback>{chat.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full"></span>
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-base truncate">{chat.name}</h3>
-                      <span className="text-[11px] text-muted-foreground font-medium">
-                        {new Date(chat.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate font-medium opacity-80">
-                      {chat.last_msg}
-                    </p>
-                  </div>
-                </div>
-              ))
-          )}
+          ))}
         </TabsContent>
 
         <TabsContent value="community" className="flex-1 space-y-2 animate-in fade-in-50 px-1 mt-0">
-          {loadingComms ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-              Loading communities...
-            </div>
-          ) : commList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center opacity-60">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                <Users className="w-8 h-8 text-muted-foreground" />
+          {loadingComms ? <div className="p-8 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />Loading communities...</div> : commList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center opacity-60"><div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4"><Users className="w-8 h-8 text-muted-foreground" /></div><h3 className="font-semibold text-lg mb-2">No communities yet</h3><p className="text-sm text-muted-foreground mb-4">Create or join a community to get started</p><Button variant="outline" onClick={() => setIsCreateCommunityOpen(true)}><Plus className="w-4 h-4 mr-2" />Create Community</Button></div>
+          ) : commList.filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map((comm: any) => (
+            <div key={comm.id} className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-2xl transition-all border border-transparent hover:border-border/50">
+              <Avatar className="h-14 w-14 rounded-2xl border shadow-sm"><AvatarImage src={comm.avatar} /><AvatarFallback className="rounded-2xl bg-primary/10 text-primary">{comm.name[0]}</AvatarFallback></Avatar>
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat(comm)}>
+                                <div className="flex items-center gap-2"><h3 className="font-bold text-base truncate">{comm.name}</h3>{comm.my_role === 'admin' && <Badge variant="secondary" className="text-xs"><Crown className="w-3 h-3 mr-1" />Admin</Badge>}{comm.my_role === 'moderator' && <Badge variant="secondary" className="text-xs"><Shield className="w-3 h-3 mr-1" />Mod</Badge>}</div>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Users className="w-3 h-3"/> {comm.member_count} members</p>
               </div>
-              <h3 className="font-semibold text-lg mb-2">No communities yet</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Create or join a community to get started
-              </p>
-              <Button variant="outline" onClick={() => setIsCreateCommunityOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Community
-              </Button>
+              <Button size="sm" variant={comm.my_role !== 'none' ? "outline" : "default"} className={comm.my_role !== 'none' ? "text-muted-foreground" : "rounded-full px-6 shadow-md"} onClick={comm.my_role !== 'none' ? () => setSelectedChat(comm) : () => joinCommunity.mutate(comm.id)}>{comm.my_role !== 'none' ? <><MessageSquare className="w-4 h-4 mr-1" />Open</> : <><UserPlus className="w-4 h-4 mr-1" />Join</>}</Button>
             </div>
-          ) : (
-            commList
-              .filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map((comm: any) => (
-                <div 
-                  key={comm.id} 
-                  className="flex items-center gap-4 p-3 hover:bg-muted/50 rounded-2xl transition-all border border-transparent hover:border-border/50"
-                >
-                  <Avatar className="h-14 w-14 rounded-2xl border shadow-sm">
-                    <AvatarImage src={comm.avatar} />
-                    <AvatarFallback className="rounded-2xl bg-primary/10 text-primary">
-                      {comm.name[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div 
-                    className="flex-1 min-w-0 cursor-pointer" 
-                    onClick={() => setSelectedChat(comm)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-base truncate">{comm.name}</h3>
-                      {comm.my_role === 'admin' && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Crown className="w-3 h-3 mr-1" />
-                          Admin
-                        </Badge>
-                      )}
-                      {comm.my_role === 'moderator' && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Shield className="w-3 h-3 mr-1" />
-                          Mod
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <Users className="w-3 h-3"/> 
-                      {comm.member_count} members
-                    </p>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    variant={comm.my_role !== 'none' ? "outline" : "default"} 
-                    className={comm.my_role !== 'none' 
-                      ? "text-muted-foreground" 
-                      : "rounded-full px-6 shadow-md"
-                    }
-                    onClick={comm.my_role !== 'none' 
-                      ? () => setSelectedChat(comm) 
-                      : () => joinCommunity.mutate(comm.id)
-                    }
-                  >
-                    {comm.my_role !== 'none' ? (
-                      <>
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        Open
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-4 h-4 mr-1" />
-                        Join
-                      </>
-                    )}
-                  </Button>
-                </div>
-              ))
-          )}
+          ))}
         </TabsContent>
       </Tabs>
 
-      {/* New Chat Dialog */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
-        <DialogContent className="sm:max-w-[500px] max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>New Message</DialogTitle>
-            <DialogDescription>
-              Start a conversation with your friends
-            </DialogDescription>
-          </DialogHeader>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search friends..." className="pl-10 bg-muted/50" />
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-2 p-1">
-              {friends.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p className="text-sm">No friends yet</p>
-                  <p className="text-xs mt-1">Add friends to start chatting</p>
-                </div>
-              ) : (
-                friends.map((f: any) => (
-                  <div 
-                    key={f.id} 
-                    onClick={() => { 
-                      setSelectedChat({ 
-                        type: 'dm', 
-                        id: f.id, 
-                        partner_id: f.id, 
-                        name: f.name, 
-                        avatar: f.avatar 
-                      }); 
-                      setIsNewChatOpen(false); 
-                    }} 
-                    className="flex items-center gap-3 p-3 hover:bg-accent rounded-lg cursor-pointer transition-colors active:scale-[0.98]"
-                  >
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={f.avatar} />
-                      <AvatarFallback>{f.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium">{f.name}</span>
-                      <p className="text-xs text-muted-foreground">Tap to message</p>
-                    </div>
-                    <MessageSquare className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
+        <DialogContent className="sm:max-w-[500px] max-h-[80vh] flex flex-col"><DialogHeader><DialogTitle>New Message</DialogTitle><DialogDescription>Start a conversation with your friends</DialogDescription></DialogHeader><div className="relative mb-4"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search friends..." className="pl-10 bg-muted/50" /></div><ScrollArea className="flex-1"><div className="space-y-2 p-1">{friends.length === 0 ? <div className="text-center py-8 text-muted-foreground"><Users className="w-12 h-12 mx-auto mb-3 opacity-50" /><p className="text-sm">No friends yet</p><p className="text-xs mt-1">Add friends to start chatting</p></div> : friends.map((f: any) => (<div key={f.id} onClick={() => { setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar }); setIsNewChatOpen(false); }} className="flex items-center gap-3 p-3 hover:bg-accent rounded-lg cursor-pointer transition-colors active:scale-[0.98]"><Avatar className="h-12 w-12"><AvatarImage src={f.avatar} /><AvatarFallback>{f.name[0]}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><span className="font-medium">{f.name}</span><p className="text-xs text-muted-foreground">Tap to message</p></div><MessageSquare className="w-5 h-5 text-muted-foreground" /></div>))}</div></ScrollArea></DialogContent>
       </Dialog>
-
-      {/* Create Community Dialog */}
       <Dialog open={isCreateCommunityOpen} onOpenChange={setIsCreateCommunityOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Community</DialogTitle>
-            <DialogDescription>
-              Bring people together around shared interests
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Community Name</Label>
-              <Input 
-                value={newCommName} 
-                onChange={(e) => setNewCommName(e.target.value)} 
-                placeholder="e.g. Tech Enthusiasts" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea 
-                value={newCommDesc} 
-                onChange={(e) => setNewCommDesc(e.target.value)} 
-                placeholder="What's your community about?" 
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={() => createCommunity.mutate()} 
-              disabled={!newCommName.trim() || createCommunity.isPending}
-            >
-              {createCommunity.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <Users className="w-4 h-4 mr-2" />
-              )}
-              Create Community
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>Create Community</DialogTitle><DialogDescription>Bring people together around shared interests</DialogDescription></DialogHeader><div className="space-y-4 py-4"><div className="space-y-2"><Label>Community Name</Label><Input value={newCommName} onChange={(e) => setNewCommName(e.target.value)} placeholder="e.g. Tech Enthusiasts" /></div><div className="space-y-2"><Label>Description</Label><Textarea value={newCommDesc} onChange={(e) => setNewCommDesc(e.target.value)} placeholder="What's your community about?" rows={3} /></div></div><DialogFooter><Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>Cancel</Button><Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isPending}>{createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Users className="w-4 h-4 mr-2" />}Create Community</Button></DialogFooter></DialogContent>
       </Dialog>
     </div>
   );
