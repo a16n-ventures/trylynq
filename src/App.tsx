@@ -27,6 +27,8 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminModeration from "./pages/admin/AdminModeration";
 import AdminEvents from "./pages/admin/AdminEvents";
+import EventInvite from "./pages/EventInvite";
+import EventDetail from "./pages/EventDetail";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +64,8 @@ const App = () => (
               <Route path="map" element={<Map />} />
               <Route path="messages" element={<Messages />} />
               <Route path="events" element={<Events />} />
+              <Route path="events/:eventId" element={<EventDetail />} />
+              <Route path="events/:eventId/invite" element={<EventInvite />} />
               <Route path="profile" element={<Profile />} />
               <Route path="notifications" element={<Notifications />} />
             </Route>
