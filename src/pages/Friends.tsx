@@ -72,14 +72,11 @@ export default function Friends() {
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [activeTab, setActiveTab] = useState("all");
   const [requestView, setRequestView] = useState<'received' | 'sent'>('received');
-  
-  // FIXED: Add the missing tempPending state
-  const [tempPending, setTempPending] = useState<Set<string>>(new Set());
 
   // --- QUERIES ---
 
   // 1. Friends (Accepted)
-  const { data: friends = [], isPending: loadingFriends } = useQuery<Friendship[]>({
+  const { data: friends = [], isPending: loadingFriends, refetch: refetchFriends } = useQuery<Friendship[]>({
     queryKey: ['friends', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -96,10 +93,11 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   // 2. Incoming (Received)
-  const { data: incomingRequests = [], isPending: loadingIncoming } = useQuery<Friendship[]>({
+  const { data: incomingRequests = [], isPending: loadingIncoming, refetch: refetchIncoming } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'incoming', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -116,10 +114,11 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
+    staleTime: 30000,
   });
 
   // 3. Outgoing (Sent)
-  const { data: outgoingRequests = [], isPending: loadingOutgoing } = useQuery<Friendship[]>({
+  const { data: outgoingRequests = [], isPending: loadingOutgoing, refetch: refetchOutgoing } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'outgoing', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -136,32 +135,40 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 0,
+    staleTime: 30000,
   });
 
-  // Helper: Source of truth for UI buttons
+  // Helper: Source of truth for UI buttons from actual database state
   const existingIds = useMemo(() => {
     const ids = new Set<string>();
     
-    friends.forEach(f => ids.add(f.requester_id === userId ? f.addressee_id : f.requester_id));
+    // Add Accepted Friends
+    friends.forEach(f => {
+      const friendId = f.requester_id === userId ? f.addressee_id : f.requester_id;
+      ids.add(friendId);
+    });
+    
+    // Add Incoming Requesters
     incomingRequests.forEach(r => ids.add(r.requester_id));
+    
+    // Add Outgoing Addressees (People I sent requests to)
     outgoingRequests.forEach(r => ids.add(r.addressee_id));
     
-    // FIXED: Also include tempPending IDs for immediate UI feedback
-    tempPending.forEach(id => ids.add(id));
-    
+    // Add Self
     if (userId) ids.add(userId);
     
     return ids;
-  }, [friends, incomingRequests, outgoingRequests, userId, tempPending]);
+  }, [friends, incomingRequests, outgoingRequests, userId]);
 
   // 4. Mutuals
   const { data: mutuals = [], isPending: loadingMutuals } = useQuery({
-    queryKey: ['mutuals', userId],
+    queryKey: ['mutuals', userId, friends],
     queryFn: async () => {
-      if (!userId) return [];
-      const myFriendIds = friends.map(f => f.requester_id === userId ? f.addressee_id : f.requester_id);
-      if (myFriendIds.length === 0) return [];
+      if (!userId || friends.length === 0) return [];
+      
+      const myFriendIds = friends.map(f => 
+        f.requester_id === userId ? f.addressee_id : f.requester_id
+      );
 
       const { data: fofData, error } = await supabase
         .from('friendships')
@@ -170,112 +177,183 @@ export default function Friends() {
         .eq('status', 'accepted')
         .limit(500);
 
-      if (error) return [];
+      if (error || !fofData) return [];
 
       const frequencyMap: Record<string, number> = {};
+      
       fofData.forEach(rel => {
         const A = rel.requester_id;
         const B = rel.addressee_id;
-        if (myFriendIds.includes(A) && !existingIds.has(B)) frequencyMap[B] = (frequencyMap[B] || 0) + 1;
-        else if (myFriendIds.includes(B) && !existingIds.has(A)) frequencyMap[A] = (frequencyMap[A] || 0) + 1;
+        
+        if (myFriendIds.includes(A) && !existingIds.has(B)) {
+          frequencyMap[B] = (frequencyMap[B] || 0) + 1;
+        } else if (myFriendIds.includes(B) && !existingIds.has(A)) {
+          frequencyMap[A] = (frequencyMap[A] || 0) + 1;
+        }
       });
 
-      const sortedIds = Object.entries(frequencyMap).sort(([, a], [, b]) => b - a).slice(0, 20).map(([id]) => id);
+      const sortedIds = Object.entries(frequencyMap)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 20)
+        .map(([id]) => id);
+
       if (sortedIds.length === 0) return [];
 
-      const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', sortedIds);
-      return profiles?.map(p => ({ ...p, mutual_count: frequencyMap[p.user_id] || 0 })).sort((a, b) => b.mutual_count - a.mutual_count) as Profile[] || [];
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('user_id', sortedIds);
+
+      if (profileError || !profiles) return [];
+
+      return profiles
+        .map(p => ({ ...p, mutual_count: frequencyMap[p.user_id] || 0 }))
+        .sort((a, b) => b.mutual_count - a.mutual_count) as Profile[];
     },
     enabled: activeTab === 'mutual' && friends.length > 0,
+    staleTime: 60000, // Cache mutuals for 1 minute
   });
 
   // 5. Suggestions
   const { data: suggestions = [], isPending: loadingSuggestions } = useQuery<Profile[]>({
-    queryKey: ['suggestions', userId, debouncedSearch],
+    queryKey: ['suggestions', userId, debouncedSearch, existingIds.size],
     queryFn: async () => {
       if (!userId) return [];
-      let query = supabase.from('profiles').select('*');
-      if (debouncedSearch) query = query.ilike('display_name', `%${debouncedSearch}%`);
       
-      const idList = Array.from(existingIds);
-      if (idList.length > 0) {
-         query = query.not('user_id', 'in', `(${idList.join(',')})`);
+      let query = supabase.from('profiles').select('*');
+      
+      if (debouncedSearch) {
+        query = query.ilike('display_name', `%${debouncedSearch}%`);
       }
       
-      const { data } = await query.limit(20);
+      // Filter out existing connections
+      const idList = Array.from(existingIds);
+      if (idList.length > 0) {
+        query = query.not('user_id', 'in', `(${idList.join(',')})`);
+      }
+      
+      const { data, error } = await query.limit(20);
+      
+      if (error) {
+        console.error('Error fetching suggestions:', error);
+        return [];
+      }
+      
       return data || [];
     },
-    enabled: activeTab === 'suggestions'
+    enabled: activeTab === 'suggestions',
+    staleTime: 30000,
   });
 
   // --- MUTATIONS ---
+  
   const sendFriendRequest = useMutation({
     mutationFn: async (targetProfile: Profile) => {
       if (!userId) throw new Error("Not authenticated");
 
+      // Insert friendship request
       const { data, error } = await supabase
         .from('friendships')
-        .insert({ requester_id: userId, addressee_id: targetProfile.user_id, status: 'pending' })
+        .insert({ 
+          requester_id: userId, 
+          addressee_id: targetProfile.user_id, 
+          status: 'pending' 
+        })
         .select()
         .single();
 
-      if (error && error.code !== '23505') throw error;
+      // Handle duplicate request error gracefully
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('Friend request already sent');
+        }
+        throw error;
+      }
 
-      try {
-        await supabase.from('notifications').insert({
-          user_id: targetProfile.user_id,
-          type: 'friend_request',
-          title: 'New Friend Request',
-          content: `You have a new friend request.`,
-          data: { requester_id: userId },
-        });
-      } catch (e) { console.error("Notification failed", e); }
+      // Send notification (non-blocking)
+      supabase.from('notifications').insert({
+        user_id: targetProfile.user_id,
+        type: 'friend_request',
+        title: 'New Friend Request',
+        content: `You have a new friend request.`,
+        data: { requester_id: userId },
+      }).then(({ error: notifError }) => {
+        if (notifError) console.error("Notification failed:", notifError);
+      });
       
       return data;
     },
-    onMutate: (targetProfile) => {
-      setTempPending(prev => new Set(prev).add(targetProfile.user_id));
+    onSuccess: async () => {
+      toast.success('Friend request sent');
+      
+      // Refetch all relevant queries to sync with database
+      await Promise.all([
+        refetchOutgoing(),
+        queryClient.invalidateQueries({ queryKey: ['suggestions'] }),
+      ]);
     },
-    onSuccess: () => {
-      toast.success('Request sent');
-      queryClient.invalidateQueries({ queryKey: ['friendRequests', 'outgoing'] });
-      queryClient.invalidateQueries({ queryKey: ['suggestions'] });
-    },
-    onError: (error: any, targetProfile) => {
-      setTempPending(prev => {
-        const next = new Set(prev);
-        next.delete(targetProfile.user_id);
-        return next;
-      });
-      toast.error(error.message || "Failed to send request");
+    onError: (error: any) => {
+      const message = error.message || "Failed to send request";
+      toast.error(message);
     }
   });
 
   const acceptFriendRequest = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
+      const { error } = await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('id', id);
+      
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Friend added!');
-      queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
-      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      
+      // Refetch all friendship data
+      await Promise.all([
+        refetchFriends(),
+        refetchIncoming(),
+      ]);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to accept request');
     }
   });
 
   const rejectFriendRequest = useMutation({
-    mutationFn: async (id: string) => await supabase.from('friendships').delete().eq('id', id),
-    onSuccess: () => {
-        toast.info('Request removed');
-        queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('friendships')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.info('Request declined');
+      await refetchIncoming();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to decline request');
     }
   });
 
   const cancelSentRequest = useMutation({
-    mutationFn: async (id: string) => await supabase.from('friendships').delete().eq('id', id),
-    onSuccess: () => {
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('friendships')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: async () => {
       toast.info('Request cancelled');
-      queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await refetchOutgoing();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to cancel request');
     }
   });
 
@@ -284,30 +362,37 @@ export default function Friends() {
     <>
       <Avatar className="w-12 h-12 border border-border/50">
         <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
-        <AvatarFallback className="bg-muted text-muted-foreground">{profile.display_name?.[0] || 'U'}</AvatarFallback>
+        <AvatarFallback className="bg-muted text-muted-foreground">
+          {profile.display_name?.[0]?.toUpperCase() || 'U'}
+        </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0 text-left">
-        <div className="font-semibold truncate">{profile.display_name}</div>
+        <div className="font-semibold truncate">{profile.display_name || 'Unknown User'}</div>
         {subtext && <div className="text-xs text-muted-foreground">{subtext}</div>}
       </div>
     </>
   );
 
+  // Filter and sort friends
   const filteredFriends = useMemo(() => {
     let res = [...friends];
+    
     if (debouncedSearch) {
-        res = res.filter(f => {
-            const p = f.requester_id === userId ? f.addressee : f.requester;
-            return p.display_name?.toLowerCase().includes(debouncedSearch.toLowerCase());
-        });
+      res = res.filter(f => {
+        const p = f.requester_id === userId ? f.addressee : f.requester;
+        return p.display_name?.toLowerCase().includes(debouncedSearch.toLowerCase());
+      });
     }
+    
     res.sort((a, b) => {
-       const pA = a.requester_id === userId ? a.addressee : a.requester;
-       const pB = b.requester_id === userId ? b.addressee : b.requester;
-       return sortOption === 'alphabetical' 
+      const pA = a.requester_id === userId ? a.addressee : a.requester;
+      const pB = b.requester_id === userId ? b.addressee : b.requester;
+      
+      return sortOption === 'alphabetical' 
         ? (pA.display_name || '').localeCompare(pB.display_name || '') 
         : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
+    
     return res;
   }, [friends, debouncedSearch, sortOption, userId]);
 
@@ -323,18 +408,26 @@ export default function Friends() {
           <Input 
             value={search} 
             onChange={(e) => setSearch(e.target.value)} 
-            placeholder="Search..."
+            placeholder="Search friends..."
             className="pl-10 bg-background/50 backdrop-blur-sm"
           />
-           {search !== debouncedSearch && (
-             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+          {search !== debouncedSearch && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
           )}
         </div>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline" size="icon"><Filter className="h-4 w-4" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon">
+              <Filter className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortOption('newest')}><ArrowUpDown className="mr-2 h-4 w-4" /> Newest</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortOption('alphabetical')}><Filter className="mr-2 h-4 w-4" /> A-Z</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortOption('newest')}>
+              <ArrowUpDown className="mr-2 h-4 w-4" /> Newest First
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortOption('alphabetical')}>
+              <Filter className="mr-2 h-4 w-4" /> Alphabetical
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -343,71 +436,161 @@ export default function Friends() {
         <TabsList className="grid w-full grid-cols-4 bg-muted/30 p-1 rounded-xl">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="requests" className="relative">
-            Reqs
-            {incomingRequests.length > 0 && <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />}
+            Requests
+            {incomingRequests.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                {incomingRequests.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="mutual">Mutuals</TabsTrigger>
-          <TabsTrigger value="suggestions">Add</TabsTrigger>
+          <TabsTrigger value="suggestions">Discover</TabsTrigger>
         </TabsList>
 
         {/* ALL FRIENDS */}
         <TabsContent value="all" className="mt-4 space-y-2">
-          <Card className="border-0 shadow-none bg-transparent"><CardContent className="p-0">
-            {loadingFriends ? <FriendSkeleton /> : filteredFriends.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">No friends yet.</div>
-            ) : (
-              <div className="space-y-2">
-                {filteredFriends.map(f => {
-                  const p = f.requester_id === userId ? f.addressee : f.requester;
-                  return (
-                    <div key={f.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 cursor-pointer" onClick={() => navigate(`/messages?userId=${p.user_id}`)}>
-                      {renderProfile(p, "Connected")}
-                      <Button variant="ghost" size="icon"><MessageSquare className="w-5 h-5 text-primary" /></Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent></Card>
+          <Card className="border-0 shadow-none bg-transparent">
+            <CardContent className="p-0">
+              {loadingFriends ? (
+                <FriendSkeleton />
+              ) : filteredFriends.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground mb-2">
+                    {search ? 'No friends found' : 'No friends yet'}
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setActiveTab('suggestions')}
+                    className="mt-2"
+                  >
+                    Find Friends
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredFriends.map(f => {
+                    const p = f.requester_id === userId ? f.addressee : f.requester;
+                    return (
+                      <div 
+                        key={f.id} 
+                        className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer" 
+                        onClick={() => navigate(`/messages?userId=${p.user_id}`)}
+                      >
+                        {renderProfile(p, "Connected")}
+                        <Button variant="ghost" size="icon" onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/messages?userId=${p.user_id}`);
+                        }}>
+                          <MessageSquare className="w-5 h-5 text-primary" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* REQUESTS */}
         <TabsContent value="requests" className="mt-4">
           <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
-            <button onClick={() => setRequestView('received')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${requestView === 'received' ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                Received {incomingRequests.length > 0 && `(${incomingRequests.length})`}
+            <button 
+              onClick={() => setRequestView('received')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
+                requestView === 'received' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Received {incomingRequests.length > 0 && `(${incomingRequests.length})`}
             </button>
-            <button onClick={() => setRequestView('sent')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${requestView === 'sent' ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                Sent {outgoingRequests.length > 0 && `(${outgoingRequests.length})`}
+            <button 
+              onClick={() => setRequestView('sent')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
+                requestView === 'sent' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Sent {outgoingRequests.length > 0 && `(${outgoingRequests.length})`}
             </button>
           </div>
 
           {requestView === 'received' && (
-             <div className="space-y-2">
-               {loadingIncoming ? <FriendSkeleton /> : incomingRequests.length === 0 ? <div className="text-center py-10 text-muted-foreground">No incoming requests.</div> : 
-                 incomingRequests.map(r => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
-                        {renderProfile(r.requester, "Wants to connect")}
-                        <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="text-red-500 hover:bg-red-50" onClick={() => rejectFriendRequest.mutate(r.id)}><X className="w-5 h-5" /></Button>
-                            <Button size="icon" className="gradient-primary text-white rounded-full" onClick={() => acceptFriendRequest.mutate(r.id)}><Check className="w-5 h-5" /></Button>
-                        </div>
+            <div className="space-y-2">
+              {loadingIncoming ? (
+                <FriendSkeleton />
+              ) : incomingRequests.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  No incoming requests
+                </div>
+              ) : (
+                incomingRequests.map(r => (
+                  <div 
+                    key={r.id} 
+                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
+                  >
+                    {renderProfile(r.requester, "Wants to connect")}
+                    <div className="flex gap-1">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600" 
+                        onClick={() => rejectFriendRequest.mutate(r.id)}
+                        disabled={rejectFriendRequest.isPending}
+                      >
+                        <X className="w-5 h-5" />
+                      </Button>
+                      <Button 
+                        size="icon" 
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full hover:from-blue-600 hover:to-purple-600" 
+                        onClick={() => acceptFriendRequest.mutate(r.id)}
+                        disabled={acceptFriendRequest.isPending}
+                      >
+                        {acceptFriendRequest.isPending ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Check className="w-5 h-5" />
+                        )}
+                      </Button>
                     </div>
-                 ))
-               }
-             </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
 
           {requestView === 'sent' && (
             <div className="space-y-2">
-                {loadingOutgoing ? <FriendSkeleton /> : outgoingRequests.length === 0 ? <div className="text-center py-10 text-muted-foreground">No sent requests.</div> : 
-                    outgoingRequests.map(r => (
-                        <div key={r.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 opacity-80">
-                            {renderProfile(r.addressee, "Request sent")}
-                            <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => cancelSentRequest.mutate(r.id)}>Cancel</Button>
-                        </div>
-                    ))
-                }
+              {loadingOutgoing ? (
+                <FriendSkeleton />
+              ) : outgoingRequests.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  No sent requests
+                </div>
+              ) : (
+                outgoingRequests.map(r => (
+                  <div 
+                    key={r.id} 
+                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 opacity-80"
+                  >
+                    {renderProfile(r.addressee, "Request sent")}
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="text-xs h-8" 
+                      onClick={() => cancelSentRequest.mutate(r.id)}
+                      disabled={cancelSentRequest.isPending}
+                    >
+                      {cancelSentRequest.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : null}
+                      Cancel
+                    </Button>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </TabsContent>
@@ -415,53 +598,87 @@ export default function Friends() {
         {/* MUTUALS */}
         <TabsContent value="mutual" className="mt-4">
           <div className="space-y-2">
-            {loadingMutuals ? <FriendSkeleton /> : mutuals.length === 0 ? <div className="text-center py-10 text-muted-foreground">No mutual connections.</div> : 
+            {loadingMutuals ? (
+              <FriendSkeleton />
+            ) : mutuals.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                No mutual connections found
+              </div>
+            ) : (
               mutuals.map((p) => {
-                const isSent = existingIds.has(p.user_id);
+                const isPending = existingIds.has(p.user_id);
                 return (
-                  <div key={p.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
-                    {renderProfile(p, `${p.mutual_count} mutual friends`)}
+                  <div 
+                    key={p.user_id} 
+                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
+                  >
+                    {renderProfile(p, `${p.mutual_count} mutual friend${p.mutual_count !== 1 ? 's' : ''}`)}
                     <Button 
-                        size="sm" 
-                        variant={isSent ? "ghost" : "secondary"} 
-                        disabled={isSent}
-                        onClick={() => sendFriendRequest.mutate(p)}
-                        className={isSent ? "text-green-600" : ""}
+                      size="sm" 
+                      variant={isPending ? "ghost" : "secondary"} 
+                      disabled={isPending || sendFriendRequest.isPending}
+                      onClick={() => !isPending && sendFriendRequest.mutate(p)}
+                      className={isPending ? "text-green-600 cursor-not-allowed" : ""}
                     >
-                      {isSent ? <> <Clock className="w-4 h-4 mr-1" /> Pending </> : <> <UserPlus className="w-4 h-4 mr-1" /> Add </>}
+                      {sendFriendRequest.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : isPending ? (
+                        <Clock className="w-4 h-4 mr-1" />
+                      ) : (
+                        <UserPlus className="w-4 h-4 mr-1" />
+                      )}
+                      {isPending ? 'Pending' : 'Add'}
                     </Button>
                   </div>
                 );
               })
-            }
+            )}
           </div>
         </TabsContent>
 
         {/* SUGGESTIONS */}
         <TabsContent value="suggestions" className="mt-4">
-           <div className="space-y-2">
-            {loadingSuggestions ? <FriendSkeleton /> : suggestions.length === 0 ? <div className="text-center py-10 text-muted-foreground">No suggestions.</div> : 
-               suggestions.map(p => {
-                 const isSent = existingIds.has(p.user_id);
-                 return (
-                   <div key={p.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
-                     {renderProfile(p, "Suggested")}
-                     <Button 
-                        size="sm" 
-                        className={isSent ? "bg-transparent border border-primary/20 text-muted-foreground" : "gradient-primary text-white"}
-                        variant={isSent ? "outline" : "default"}
-                        disabled={isSent}
-                        onClick={() => sendFriendRequest.mutate(p)}
-                     >
-                       {isSent ? <> <Clock className="w-4 h-4 mr-1" /> Pending </> : <> <UserPlus className="w-4 h-4 mr-1" /> Add </>}
-                     </Button>
-                   </div>
-                 );
-               })
-            }
-           </div>
+          <div className="space-y-2">
+            {loadingSuggestions ? (
+              <FriendSkeleton />
+            ) : suggestions.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                {search ? 'No users found' : 'No suggestions available'}
+              </div>
+            ) : (
+              suggestions.map(p => {
+                const isPending = existingIds.has(p.user_id);
+                return (
+                  <div 
+                    key={p.user_id} 
+                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
+                  >
+                    {renderProfile(p, "Suggested for you")}
+                    <Button 
+                      size="sm" 
+                      className={isPending 
+                        ? "bg-transparent border border-primary/20 text-muted-foreground cursor-not-allowed" 
+                        : "bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600"
+                      }
+                      variant={isPending ? "outline" : "default"}
+                      disabled={isPending || sendFriendRequest.isPending}
+                      onClick={() => !isPending && sendFriendRequest.mutate(p)}
+                    >
+                      {sendFriendRequest.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : isPending ? (
+                        <Clock className="w-4 h-4 mr-1" />
+                      ) : (
+                        <UserPlus className="w-4 h-4 mr-1" />
+                      )}
+                      {isPending ? 'Pending' : 'Add'}
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </TabsContent>
-
       </Tabs>
     </div>
   );
