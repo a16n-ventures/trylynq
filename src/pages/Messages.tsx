@@ -122,7 +122,7 @@ const MessageBubble = ({
           {!isSequence ? (
             <Avatar className="w-8 h-8">
               <AvatarImage src={msg.sender_avatar} />
-              <AvatarFallback>{msg.sender_name?.[0]}</AvatarFallback>
+              <AvatarFallback>{msg.sender_name?.[0] || '?'}</AvatarFallback>
             </Avatar>
           ) : <div className="w-8" />}
         </div>
@@ -131,7 +131,7 @@ const MessageBubble = ({
       <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
         {!msg.is_me && isComm && !isSequence && (
           <span className="text-[10px] ml-1 mb-1 text-muted-foreground font-medium">
-            {msg.sender_name}
+            {msg.sender_name || 'Unknown'}
           </span>
         )}
 
@@ -299,13 +299,13 @@ const CommunityInfoDialog = ({
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={m.profile.avatar_url} />
-                        <AvatarFallback>{m.profile.display_name[0]}</AvatarFallback>
+                        <AvatarImage src={m.profile?.avatar_url} />
+                        <AvatarFallback>{m.profile?.display_name?.[0] || '?'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">
-                            {m.profile.display_name}
+                            {m.profile?.display_name || 'Unknown User'}
                           </span>
                           {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
                         </div>
@@ -511,7 +511,8 @@ const CommunitySettingsDialog = ({
 
 // --- MAIN COMPONENT ---
 export default function Messages() {
-  const { user } = useAuth();
+  // @ts-ignore - handling potential auth context issues
+  const { user } = useAuth() || {};
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -534,16 +535,22 @@ export default function Messages() {
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      const { data } = await supabase
+      if (!user?.id) return [];
+      
+      const { data, error } = await supabase
         .from('messages')
         .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
+      if (error || !data) return [];
+
       const map = new Map();
-      data?.forEach((msg: any) => {
-        const partner = msg.sender_id === user.id ? msg.receiver : msg.sender;
+      data.forEach((msg: any) => {
+        // Robust check for relationship data (Supabase might return null or arrays depending on setup)
+        const rawPartner = msg.sender_id === user.id ? msg.receiver : msg.sender;
+        const partner = Array.isArray(rawPartner) ? rawPartner[0] : rawPartner;
+
         if (partner && partner.user_id && !map.has(partner.user_id)) {
           map.set(partner.user_id, {
             type: 'dm',
@@ -558,13 +565,13 @@ export default function Messages() {
       });
       return Array.from(map.values());
     },
-    enabled: !!user
+    enabled: !!user?.id
   });
 
   const { data: commList = [], isLoading: loadingComms } = useQuery({
     queryKey: ['comm_list', user?.id],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user?.id) return [];
       const { data } = await supabase
         .from('communities')
         .select(`*, members:community_members(user_id, role)`);
@@ -574,7 +581,7 @@ export default function Messages() {
         return {
           type: 'community',
           id: c.id,
-          name: c.name,
+          name: c.name || 'Unnamed Community',
           description: c.description,
           avatar: c.avatar_url,
           member_count: c.member_count || 0,
@@ -583,20 +590,23 @@ export default function Messages() {
         };
       }) || [];
     },
-    enabled: !!user
+    enabled: !!user?.id
   });
 
   const { data: friends = [] } = useQuery({
     queryKey: ['my_friends', user?.id],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user?.id) return [];
       const { data } = await supabase
         .from('friendships')
         .select('requester_id, addressee_id, requester:profiles!requester_id(*), addressee:profiles!addressee_id(*)')
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
         .eq('status', 'accepted');
+        
       return data?.map((f: any) => {
-        const profile = f.requester_id === user.id ? f.addressee : f.requester;
+        const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
+        const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+        
         if (!profile) return null;
         return { 
           id: profile.user_id, 
@@ -605,13 +615,13 @@ export default function Messages() {
         };
       }).filter(Boolean) || [];
     },
-    enabled: !!user && isNewChatOpen
+    enabled: !!user?.id && isNewChatOpen
   });
 
   const { data: messages = [] } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
     queryFn: async () => {
-      if (!user || !selectedChat) return [];
+      if (!user?.id || !selectedChat) return [];
       let data;
       if (selectedChat.type === 'dm') {
         const res = await supabase
@@ -638,8 +648,8 @@ export default function Messages() {
         is_deleted: m.is_deleted || false
       })) as Message[] || [];
     },
-    enabled: !!selectedChat && !!user,
-    refetchInterval: 3000
+    enabled: !!selectedChat && !!user?.id,
+    refetchInterval: 5000 // Relaxed interval
   });
 
   // --- MUTATIONS ---
@@ -789,6 +799,16 @@ export default function Messages() {
     }
   }, [messages, imagePreview]);
 
+  // --- LOADING GUARD ---
+  // This prevents the component from trying to render UI that relies on user data before it's ready
+  if (!user) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   // --- RENDER: CHAT VIEW ---
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
@@ -811,7 +831,7 @@ export default function Messages() {
           
           <Avatar className="h-10 w-10 border">
             <AvatarImage src={selectedChat.avatar} />
-            <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
+            <AvatarFallback>{selectedChat.name?.[0] || 'C'}</AvatarFallback>
           </Avatar>
           
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
@@ -1024,7 +1044,8 @@ export default function Messages() {
   // --- RENDER: LIST VIEW ---
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-background">
-      <div className="container-mobile pt-6">
+      {/* Replaced custom 'container-mobile' with standard tailwind classes to ensure visibility */}
+      <div className="w-full max-w-3xl mx-auto px-4 pt-6">
         <div className="flex items-center justify-between mb-6 px-1">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
@@ -1107,7 +1128,7 @@ export default function Messages() {
                     <div className="relative">
                       <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
                         <AvatarImage src={chat.avatar} />
-                        <AvatarFallback>{chat.name[0]}</AvatarFallback>
+                        <AvatarFallback>{chat.name?.[0] || '?'}</AvatarFallback>
                       </Avatar>
                       <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full"></span>
                     </div>
@@ -1158,7 +1179,7 @@ export default function Messages() {
                     <Avatar className="h-14 w-14 rounded-2xl border shadow-sm">
                       <AvatarImage src={comm.avatar} />
                       <AvatarFallback className="rounded-2xl bg-primary/10 text-primary">
-                        {comm.name[0]}
+                        {comm.name?.[0] || 'C'}
                       </AvatarFallback>
                     </Avatar>
                     <div 
@@ -1255,7 +1276,7 @@ export default function Messages() {
                   >
                     <Avatar className="h-12 w-12">
                       <AvatarImage src={f.avatar} />
-                      <AvatarFallback>{f.name[0]}</AvatarFallback>
+                      <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <span className="font-medium">{f.name}</span>
