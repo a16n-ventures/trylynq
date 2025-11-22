@@ -15,6 +15,8 @@ import Friends from "./pages/Friends";
 import Profile from "./pages/Profile";
 import CreateEvent from "./pages/CreateEvent";
 import Events from "./pages/Events";
+import EventInvite from "./pages/EventInvite";
+import EventDetail from "./pages/EventDetail";
 import Premium from "./pages/Premium";
 import Notifications from "./pages/Notifications";
 import MainLayout from "./components/layout/MainLayout";
@@ -27,8 +29,6 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminModeration from "./pages/admin/AdminModeration";
 import AdminEvents from "./pages/admin/AdminEvents";
-import EventInvite from "./pages/EventInvite";
-import EventDetail from "./pages/EventDetail";
 
 const queryClient = new QueryClient();
 
