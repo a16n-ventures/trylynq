@@ -49,7 +49,7 @@ type Event = {
   image_url?: string;
 };
 
-const EventInvitePage = () => {
+const EventInvite = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
