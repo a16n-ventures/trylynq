@@ -324,7 +324,7 @@ export default function Events() {
     const shareData = {
       title: event.title,
       text: `Check out this event: ${event.title}`,
-      url: `${window.location.origin}/app/events/${event.id}`
+      url: `${window.location.origin}/events/${event.id}`
     };
 
     try {
@@ -349,7 +349,7 @@ export default function Events() {
       <Card 
         key={event.id} 
         className="overflow-hidden hover:shadow-lg transition-all border-border/60 cursor-pointer group"
-        onClick={() => navigate(`/pages/events/${event.id}`)}
+        onClick={() => navigate(`/events/${event.id}`)}
       >
         <CardContent className="p-0">
           <div className="flex h-36">
@@ -445,7 +445,7 @@ export default function Events() {
                       className="h-7 text-xs flex-1"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/pages/events/${event.id}`);
+                        navigate(`/events/${event.id}`);
                       }}
                     >
                       <Edit className="w-3 h-3 mr-1" /> Manage
@@ -468,7 +468,7 @@ export default function Events() {
                     className="h-7 text-xs w-full gradient-primary text-white"
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/pages/events/${event.id}`);
+                      navigate(`/events/${event.id}`);
                     }}
                   >
                     <Ticket className="w-3 h-3 mr-1" /> View Details
@@ -481,7 +481,7 @@ export default function Events() {
                     disabled={isFull}
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/pages/events/${event.id}`);
+                      navigate(`/events/${event.id}`);
                     }}
                   >
                     {isFull ? 'Event Full' : 'View & RSVP'}
@@ -514,7 +514,7 @@ export default function Events() {
       <div className="flex items-center justify-between px-1">
         <h1 className="text-2xl font-bold tracking-tight">Events</h1>
         <Button 
-          onClick={() => navigate('/pages/create-event')} 
+          onClick={() => navigate('/create-event')} 
           size="sm" 
           className="gradient-primary text-white rounded-full shadow-md gap-1"
         >
@@ -561,7 +561,7 @@ export default function Events() {
                 ? "No events match your search. Try different keywords." 
                 : "You haven't created any events yet. Start hosting to build your community!"
               }
-              action={() => navigate('/pages/create-event')}
+              action={() => navigate('/create-event')}
               actionLabel="Create Event"
             />
           ) : (
