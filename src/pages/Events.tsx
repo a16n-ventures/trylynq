@@ -5,32 +5,69 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, MapPin, Users, TrendingUp, Plus, ExternalLink, Ticket, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Calendar,
+  MapPin,
+  Users,
+  TrendingUp,
+  Plus,
+  Ticket,
+  Loader2,
+  Search,
+  Video,
+  MapPinned,
+  Clock,
+  Edit,
+  Share2,
+  UserPlus
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, isPast, isFuture, isToday } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-// --- TYPES (Matched to Database) ---
+// --- TYPES ---
 type Event = {
   id: string;
-  title: string;       // Database column: title
+  title: string;
   description?: string;
-  start_date: string;  // Database column: start_date
+  category: string;
+  start_date: string;
   location: string;
   ticket_price: number;
   image_url?: string;
   creator_id: string;
+  is_public: boolean;
+  max_attendees?: number | null;
+  event_type: 'physical' | 'virtual';
+  meeting_link?: string | null;
+  creator?: {
+    user_id: string;
+    display_name: string;
+    avatar_url?: string;
+  };
+};
+
+type EventWithStats = Event & {
+  attendee_count?: number;
 };
 
 // --- COMPONENTS ---
 const EventSkeleton = () => (
   <div className="space-y-3">
-    {[1, 2].map(i => (
+    {[1, 2, 3].map(i => (
       <Card key={i} className="border-0 shadow-sm bg-card/50">
         <CardContent className="p-4 flex gap-4">
-          <div className="w-20 h-24 rounded-xl bg-muted animate-pulse" />
+          <div className="w-24 h-32 rounded-xl bg-muted animate-pulse" />
           <div className="flex-1 space-y-2">
-            <div className="h-5 w-1/2 bg-muted animate-pulse rounded" />
+            <div className="h-5 w-2/3 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-1/2 bg-muted/50 animate-pulse rounded" />
             <div className="h-4 w-1/3 bg-muted/50 animate-pulse rounded" />
             <div className="h-8 w-24 bg-muted animate-pulse rounded mt-2" />
           </div>
@@ -40,18 +77,28 @@ const EventSkeleton = () => (
   </div>
 );
 
-const EmptyState = ({ action }: { action: () => void }) => (
+const EmptyState = ({ 
+  title, 
+  description, 
+  action, 
+  actionLabel 
+}: { 
+  title: string;
+  description: string;
+  action: () => void;
+  actionLabel: string;
+}) => (
   <Card className="border-2 border-dashed border-muted bg-muted/5 shadow-none py-12">
     <CardContent className="flex flex-col items-center text-center space-y-3">
       <div className="w-16 h-16 bg-muted/20 rounded-full flex items-center justify-center mb-2">
         <Calendar className="w-8 h-8 text-muted-foreground/50" />
       </div>
-      <h3 className="font-semibold text-lg text-foreground">No Events Found</h3>
+      <h3 className="font-semibold text-lg text-foreground">{title}</h3>
       <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-        There are no upcoming events in this category. Why not host one?
+        {description}
       </p>
       <Button onClick={action} className="mt-4 gradient-primary text-white shadow-md">
-        <Plus className="w-4 h-4 mr-2" /> Create Event
+        <Plus className="w-4 h-4 mr-2" /> {actionLabel}
       </Button>
     </CardContent>
   </Card>
@@ -62,181 +109,589 @@ export default function Events() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  // 1. Fetch My Events
-  const { data: myEvents = [], isLoading: loadingMy } = useQuery<Event[]>({
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("my");
+
+  // 1. Fetch My Events with attendee counts
+  const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
     queryKey: ["events", "my", userId],
     queryFn: async () => {
       if (!userId) return [];
-      const { data, error } = await supabase
+      
+      const { data: events, error } = await supabase
         .from("events")
-        .select("*")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
         .eq("creator_id", userId)
         .order("start_date", { ascending: true });
+      
       if (error) throw error;
-      return data || [];
+      if (!events) return [];
+
+      // Get attendee counts for each event
+      const eventsWithCounts = await Promise.all(
+        events.map(async (event) => {
+          const { count } = await supabase
+            .from("event_attendees")
+            .select("*", { count: 'exact', head: true })
+            .eq("event_id", event.id)
+            .eq("status", "confirmed");
+          
+          return { ...event, attendee_count: count || 0 };
+        })
+      );
+
+      return eventsWithCounts;
     },
     enabled: !!userId,
+    staleTime: 30000,
   });
 
   // 2. Fetch Attending Events
-  const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<Event[]>({
+  const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<EventWithStats[]>({
     queryKey: ["events", "attending", userId],
     queryFn: async () => {
       if (!userId) return [];
       
-      const { data: attendees } = await supabase
+      // Get event IDs user is attending
+      const { data: attendees, error: attendeesError } = await supabase
         .from("event_attendees")
         .select("event_id")
         .eq("user_id", userId)
-        .eq("status", "going");
+        .eq("status", "confirmed");
       
+      if (attendeesError) throw attendeesError;
       if (!attendees || attendees.length === 0) return [];
       
       const eventIds = attendees.map((a) => a.event_id);
       
-      const { data: events } = await supabase
+      // Fetch full event details
+      const { data: events, error: eventsError } = await supabase
         .from("events")
-        .select("*")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
         .in("id", eventIds)
         .order("start_date", { ascending: true });
       
-      return events || [];
+      if (eventsError) throw eventsError;
+      if (!events) return [];
+
+      // Get attendee counts
+      const eventsWithCounts = await Promise.all(
+        events.map(async (event) => {
+          const { count } = await supabase
+            .from("event_attendees")
+            .select("*", { count: 'exact', head: true })
+            .eq("event_id", event.id)
+            .eq("status", "confirmed");
+          
+          return { ...event, attendee_count: count || 0 };
+        })
+      );
+
+      return eventsWithCounts;
     },
     enabled: !!userId,
+    staleTime: 30000,
   });
 
-  // 3. Fetch Stats (Aggregated locally to avoid SQL sum issues)
+  // 3. Fetch Discover Events (public events not created by user)
+  const { data: discoverEvents = [], isLoading: loadingDiscover } = useQuery<EventWithStats[]>({
+    queryKey: ["events", "discover", userId, searchQuery],
+    queryFn: async () => {
+      if (!userId) return [];
+      
+      let query = supabase
+        .from("events")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
+        .eq("is_public", true)
+        .neq("creator_id", userId)
+        .gte("start_date", new Date().toISOString())
+        .order("start_date", { ascending: true })
+        .limit(50);
+
+      // Apply search filter
+      if (searchQuery) {
+        query = query.or(`title.ilike.%${searchQuery}%,location.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%`);
+      }
+
+      const { data: events, error } = await query;
+      
+      if (error) throw error;
+      if (!events) return [];
+
+      // Get attendee counts
+      const eventsWithCounts = await Promise.all(
+        events.map(async (event) => {
+          const { count } = await supabase
+            .from("event_attendees")
+            .select("*", { count: 'exact', head: true })
+            .eq("event_id", event.id)
+            .eq("status", "confirmed");
+          
+          return { ...event, attendee_count: count || 0 };
+        })
+      );
+
+      return eventsWithCounts;
+    },
+    enabled: !!userId && activeTab === "discover",
+    staleTime: 30000,
+  });
+
+  // 4. Fetch Stats
   const { data: stats } = useQuery({
     queryKey: ["events", "stats", userId],
     queryFn: async () => {
-      if (!userId) return { totalAttendees: 0 };
+      if (!userId) return { 
+        totalHosted: 0, 
+        totalAttendees: 0, 
+        upcomingEvents: 0,
+        pastEvents: 0,
+        totalRevenue: 0
+      };
       
-      // Get my event IDs
-      const { data: myEventIds } = await supabase.from('events').select('id').eq('creator_id', userId);
-      if (!myEventIds?.length) return { totalAttendees: 0 };
+      // Get all my events
+      const { data: myEventsList } = await supabase
+        .from('events')
+        .select('id, start_date, ticket_price')
+        .eq('creator_id', userId);
       
-      const ids = myEventIds.map(e => e.id);
+      if (!myEventsList?.length) return { 
+        totalHosted: 0, 
+        totalAttendees: 0, 
+        upcomingEvents: 0,
+        pastEvents: 0,
+        totalRevenue: 0
+      };
+      
+      const ids = myEventsList.map(e => e.id);
+      const now = new Date();
 
-      // Count attendees
-      const { count } = await supabase
+      // Count total attendees across all events
+      const { count: totalAttendees } = await supabase
         .from('event_attendees')
         .select('*', { count: 'exact', head: true })
         .in('event_id', ids)
-        .eq('status', 'going');
+        .eq('status', 'confirmed');
+
+      // Calculate revenue (attendees * ticket price)
+      let totalRevenue = 0;
+      for (const event of myEventsList) {
+        if (event.ticket_price > 0) {
+          const { count } = await supabase
+            .from('event_attendees')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', event.id)
+            .eq('status', 'confirmed');
+          
+          totalRevenue += (count || 0) * event.ticket_price;
+        }
+      }
+
+      const upcomingEvents = myEventsList.filter(e => isFuture(new Date(e.start_date))).length;
+      const pastEvents = myEventsList.filter(e => isPast(new Date(e.start_date))).length;
       
-      return { totalAttendees: count || 0 };
+      return { 
+        totalHosted: myEventsList.length,
+        totalAttendees: totalAttendees || 0,
+        upcomingEvents,
+        pastEvents,
+        totalRevenue
+      };
     },
-    enabled: !!userId
+    enabled: !!userId && activeTab === "analytics",
+    staleTime: 60000,
   });
 
-  const renderEventCard = (event: Event, type: 'mine' | 'attending') => (
-    <Card key={event.id} className="overflow-hidden hover:shadow-md transition-all border-border/60 cursor-pointer group" onClick={() => navigate(`/events/${event.id}`)}>
-      <CardContent className="p-0">
-        <div className="flex h-32">
-          {/* Date Strip or Image */}
-          <div className="w-24 bg-muted/30 flex flex-col items-center justify-center p-2 border-r border-border/50 relative">
-            {event.image_url ? (
-               <img src={event.image_url} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-            ) : (
-               <>
-                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                   {format(new Date(event.start_date), 'MMM')}
-                 </span>
-                 <span className="text-2xl font-bold text-primary">
-                   {format(new Date(event.start_date), 'd')}
-                 </span>
-               </>
-            )}
-          </div>
+  // Event status helper
+  const getEventStatus = (startDate: string) => {
+    const date = new Date(startDate);
+    if (isToday(date)) return { label: 'Today', color: 'bg-green-500' };
+    if (isFuture(date)) return { label: 'Upcoming', color: 'bg-blue-500' };
+    return { label: 'Past', color: 'bg-gray-500' };
+  };
 
-          {/* Details */}
-          <div className="flex-1 p-4 min-w-0 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-start gap-2">
-                <h3 className="font-bold truncate pr-2 text-lg leading-tight">{event.title}</h3>
-                {event.ticket_price > 0 ? (
-                  <Badge variant="secondary" className="shrink-0 bg-green-100 text-green-700 border-0">
-                    ₦{event.ticket_price}
-                  </Badge>
+  // Share event
+  const shareEvent = async (event: Event) => {
+    const shareData = {
+      title: event.title,
+      text: `Check out this event: ${event.title}`,
+      url: `${window.location.origin}/app/events/${event.id}`
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+        toast.success('Event link copied!');
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+    }
+  };
+
+  // Render Event Card
+  const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending' | 'discover') => {
+    const status = getEventStatus(event.start_date);
+    const eventDate = new Date(event.start_date);
+    const isFull = event.max_attendees && event.attendee_count ? event.attendee_count >= event.max_attendees : false;
+
+    return (
+      <Card 
+        key={event.id} 
+        className="overflow-hidden hover:shadow-lg transition-all border-border/60 cursor-pointer group"
+        onClick={() => navigate(`/app/events/${event.id}`)}
+      >
+        <CardContent className="p-0">
+          <div className="flex h-36">
+            {/* Image/Date Strip */}
+            <div className="w-28 bg-gradient-to-br from-purple-600 to-blue-600 relative overflow-hidden">
+              {event.image_url ? (
+                <img 
+                  src={event.image_url} 
+                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                  alt={event.title}
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-90">
+                    {format(eventDate, 'MMM')}
+                  </span>
+                  <span className="text-3xl font-bold">
+                    {format(eventDate, 'd')}
+                  </span>
+                  <span className="text-xs opacity-75">
+                    {format(eventDate, 'HH:mm')}
+                  </span>
+                </div>
+              )}
+              
+              {/* Event Type Badge */}
+              <Badge 
+                className="absolute top-2 left-2 text-[10px] px-2 py-0.5"
+                variant={event.event_type === 'virtual' ? 'default' : 'secondary'}
+              >
+                {event.event_type === 'virtual' ? (
+                  <><Video className="w-3 h-3 mr-1" /> Virtual</>
                 ) : (
-                  <Badge variant="outline" className="shrink-0 text-muted-foreground">Free</Badge>
+                  <><MapPinned className="w-3 h-3 mr-1" /> Physical</>
+                )}
+              </Badge>
+            </div>
+
+            {/* Details */}
+            <div className="flex-1 p-4 min-w-0 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold truncate text-base leading-tight mb-1">
+                      {event.title}
+                    </h3>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {event.category}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    {event.ticket_price > 0 ? (
+                      <Badge className="bg-green-100 text-green-700 border-0 text-xs">
+                        ₦{event.ticket_price}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground text-xs">
+                        Free
+                      </Badge>
+                    )}
+                    <div className={`w-2 h-2 rounded-full ${status.color}`} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="w-3 h-3 shrink-0" />
+                    <span className="truncate">
+                      {format(eventDate, 'EEE, MMM d • h:mm a')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{event.location}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Users className="w-3 h-3 shrink-0" />
+                    <span>
+                      {event.attendee_count || 0} attending
+                      {event.max_attendees && ` • ${event.max_attendees} max`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 mt-3">
+                {type === 'mine' ? (
+                  <>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="h-7 text-xs flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/app/events/${event.id}`);
+                      }}
+                    >
+                      <Edit className="w-3 h-3 mr-1" /> Manage
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-7 px-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        shareEvent(event);
+                      }}
+                    >
+                      <Share2 className="w-3 h-3" />
+                    </Button>
+                  </>
+                ) : type === 'attending' ? (
+                  <Button 
+                    size="sm" 
+                    className="h-7 text-xs w-full gradient-primary text-white"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/app/events/${event.id}`);
+                    }}
+                  >
+                    <Ticket className="w-3 h-3 mr-1" /> View Details
+                  </Button>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    className="h-7 text-xs w-full"
+                    variant={isFull ? "outline" : "default"}
+                    disabled={isFull}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/app/events/${event.id}`);
+                    }}
+                  >
+                    {isFull ? 'Event Full' : 'View & RSVP'}
+                  </Button>
                 )}
               </div>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{event.location || 'Online'}</span>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 mt-2">
-               {type === 'mine' ? (
-                 <Button size="sm" variant="outline" className="h-7 text-xs px-4 w-full">Manage</Button>
-               ) : (
-                 <Button size="sm" className="h-7 text-xs px-4 w-full gradient-primary text-white">View Ticket</Button>
-               )}
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // Filter events by search
+  const filterEvents = (events: EventWithStats[]) => {
+    if (!searchQuery) return events;
+    return events.filter(event => 
+      event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      event.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      event.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
+
+  const filteredMyEvents = filterEvents(myEvents);
+  const filteredAttendingEvents = filterEvents(attendingEvents);
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
+      {/* Header */}
       <div className="flex items-center justify-between px-1">
         <h1 className="text-2xl font-bold tracking-tight">Events</h1>
-        <Button onClick={() => navigate('/create-event')} size="sm" className="rounded-full shadow-md gap-1">
+        <Button 
+          onClick={() => navigate('/app/create-event')} 
+          size="sm" 
+          className="gradient-primary text-white rounded-full shadow-md gap-1"
+        >
           <Plus className="w-4 h-4" /> Create
         </Button>
       </div>
 
-      <Tabs defaultValue="my" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
-          <TabsTrigger value="my" className="rounded-lg">Hosted</TabsTrigger>
-          <TabsTrigger value="attending" className="rounded-lg">Going</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg">Stats</TabsTrigger>
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search events, locations, categories..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 bg-background/50 backdrop-blur-sm"
+        />
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl">
+          <TabsTrigger value="my" className="rounded-lg text-xs">
+            Hosted
+          </TabsTrigger>
+          <TabsTrigger value="attending" className="rounded-lg text-xs">
+            Going
+          </TabsTrigger>
+          <TabsTrigger value="discover" className="rounded-lg text-xs">
+            Discover
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg text-xs">
+            Stats
+          </TabsTrigger>
         </TabsList>
 
+        {/* My Events Tab */}
         <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
-          {loadingMy ? <EventSkeleton /> : myEvents.length === 0 ? (
-            <EmptyState action={() => navigate('/create-event')} />
+          {loadingMy ? (
+            <EventSkeleton />
+          ) : filteredMyEvents.length === 0 ? (
+            <EmptyState
+              title="No Hosted Events"
+              description={searchQuery 
+                ? "No events match your search. Try different keywords." 
+                : "You haven't created any events yet. Start hosting to build your community!"
+              }
+              action={() => navigate('/app/create-event')}
+              actionLabel="Create Event"
+            />
           ) : (
-            myEvents.map(e => renderEventCard(e, 'mine'))
+            <div className="space-y-3">
+              {filteredMyEvents.map(e => renderEventCard(e, 'mine'))}
+            </div>
           )}
         </TabsContent>
 
+        {/* Attending Events Tab */}
         <TabsContent value="attending" className="space-y-3 mt-6 animate-in fade-in-50">
-          {loadingAttending ? <EventSkeleton /> : attendingEvents.length === 0 ? (
+          {loadingAttending ? (
+            <EventSkeleton />
+          ) : filteredAttendingEvents.length === 0 ? (
+            <EmptyState
+              title="No Events Found"
+              description={searchQuery
+                ? "No events match your search."
+                : "You haven't joined any events yet. Discover exciting events happening around you!"
+              }
+              action={() => setActiveTab('discover')}
+              actionLabel="Discover Events"
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredAttendingEvents.map(e => renderEventCard(e, 'attending'))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Discover Tab */}
+        <TabsContent value="discover" className="space-y-3 mt-6 animate-in fade-in-50">
+          {loadingDiscover ? (
+            <EventSkeleton />
+          ) : discoverEvents.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-muted rounded-xl bg-muted/5">
-              <Ticket className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
-              <p className="text-muted-foreground">You haven't joined any events yet.</p>
-              <Button variant="link" onClick={() => navigate('/app/discover')}>Find Events</Button>
+              <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground">
+                {searchQuery 
+                  ? "No events match your search. Try different keywords."
+                  : "No upcoming public events found. Check back later!"
+                }
+              </p>
             </div>
           ) : (
-            attendingEvents.map(e => renderEventCard(e, 'attending'))
+            <div className="space-y-3">
+              {discoverEvents.map(e => renderEventCard(e, 'discover'))}
+            </div>
           )}
         </TabsContent>
 
+        {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-4 mt-6 animate-in fade-in-50">
           <div className="grid grid-cols-2 gap-3">
             <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-32">
-                <div className="bg-primary/10 p-2 rounded-full mb-2"><Calendar className="w-5 h-5 text-primary" /></div>
-                <span className="text-2xl font-bold">{myEvents.length}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Hosted</span>
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
+                <div className="bg-primary/10 p-2 rounded-full mb-2">
+                  <Calendar className="w-4 h-4 text-primary" />
+                </div>
+                <span className="text-2xl font-bold">{stats?.totalHosted || 0}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Total Hosted
+                </span>
               </CardContent>
             </Card>
+
             <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-32">
-                <div className="bg-blue-100 p-2 rounded-full mb-2"><Users className="w-5 h-5 text-blue-600" /></div>
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
+                <div className="bg-blue-100 p-2 rounded-full mb-2">
+                  <Users className="w-4 h-4 text-blue-600" />
+                </div>
                 <span className="text-2xl font-bold">{stats?.totalAttendees || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Attendees</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Total Attendees
+                </span>
+              </CardContent>
+            </Card>
+
+            <Card className="gradient-card border-0 shadow-sm">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
+                <div className="bg-green-100 p-2 rounded-full mb-2">
+                  <TrendingUp className="w-4 h-4 text-green-600" />
+                </div>
+                <span className="text-2xl font-bold">{stats?.upcomingEvents || 0}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Upcoming
+                </span>
+              </CardContent>
+            </Card>
+
+            <Card className="gradient-card border-0 shadow-sm">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
+                <div className="bg-purple-100 p-2 rounded-full mb-2">
+                  <Ticket className="w-4 h-4 text-purple-600" />
+                </div>
+                <span className="text-2xl font-bold">
+                  ₦{(stats?.totalRevenue || 0).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Total Revenue
+                </span>
               </CardContent>
             </Card>
           </div>
-          <Card className="border-muted/50 shadow-none bg-muted/10">
-            <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4 text-green-600" /> Engagement</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Keep hosting! Consistent events grow your community 3x faster.</p></CardContent>
+
+          {/* Insights Card */}
+          <Card className="border-muted/50 shadow-sm bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                Growth Insights
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Past Events</span>
+                <span className="font-semibold">{stats?.pastEvents || 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Avg Attendees/Event</span>
+                <span className="font-semibold">
+                  {stats?.totalHosted && stats.totalHosted > 0
+                    ? Math.round((stats.totalAttendees || 0) / stats.totalHosted)
+                    : 0}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+                💡 Tip: Hosting events consistently helps grow your community 3x faster!
+              </p>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
