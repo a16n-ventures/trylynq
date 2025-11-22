@@ -208,11 +208,13 @@ export default function Friends() {
   });
 
   // --- MUTATIONS ---
-  const sendFriendRequest = useMutation({
+    const sendFriendRequest = useMutation({
     mutationFn: async (targetProfile: Profile) => {
       if (!userId) throw new Error("Not authenticated");
       
-      // 1. ACTUAL DB INSERT
+      // Debugging: Check if IDs are valid
+      console.log(`Sending request from ${userId} to ${targetProfile.user_id}`);
+
       const { data, error } = await supabase
         .from('friendships')
         .insert({ 
@@ -220,12 +222,18 @@ export default function Friends() {
             addressee_id: targetProfile.user_id, 
             status: 'pending' 
         })
-        .select() // CRITICAL: We must try to select it back to ensure RLS didn't block it
+        .select()
         .single();
+
+      // Unique violation code (already requested) - Ignore error
+      if (error && error.code === '23505') {
+        console.log("Friend request already exists");
+        return null; 
+      }
 
       if (error) throw error;
 
-      // 2. Notification
+      // Send Notification (Fire and forget)
       try {
         await supabase.from('notifications').insert({
           user_id: targetProfile.user_id,
@@ -240,13 +248,13 @@ export default function Friends() {
     },
     onSuccess: () => {
       toast.success('Request sent');
-      // Force refetch so the new request appears in outgoing list and buttons update
       queryClient.invalidateQueries({ queryKey: ['friendRequests', 'outgoing'] });
       queryClient.invalidateQueries({ queryKey: ['suggestions'] });
     },
-    onError: (error) => {
-      console.error(error);
-      toast.error("Could not send request. Check connection.");
+    onError: (error: any) => {
+      console.error("Mutation Error Details:", error);
+      // Show the REAL error message from Supabase
+      toast.error(error.message || "Failed to send request");
     }
   });
 
