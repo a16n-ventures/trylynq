@@ -67,7 +67,7 @@ type Attendee = {
   avatar_url?: string;
 };
 
-const EventDetailPage = () => {
+const EventDetail = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
