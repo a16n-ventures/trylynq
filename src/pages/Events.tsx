@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,10 @@ import {
   Clock,
   Edit,
   Share2,
-  UserPlus
+  UserPlus,
+  Wallet,
+  ArrowUpRight,
+  Info
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, isToday } from "date-fns";
@@ -31,6 +34,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // --- TYPES ---
 type Event = {
@@ -108,11 +113,13 @@ export default function Events() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const userId = user?.id;
+  const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
+  const [isPayoutLoading, setIsPayoutLoading] = useState(false);
 
-  // 1. Fetch My Events with attendee counts
+  // 1. Fetch My Events with OPTIMIZED attendee counts
   const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
     queryKey: ["events", "my", userId],
     queryFn: async () => {
@@ -128,34 +135,38 @@ export default function Events() {
         .order("start_date", { ascending: true });
       
       if (error) throw error;
-      if (!events) return [];
+      if (!events || events.length === 0) return [];
 
-      // Get attendee counts for each event
-      const eventsWithCounts = await Promise.all(
-        events.map(async (event) => {
-          const { count } = await supabase
-            .from("event_attendees")
-            .select("*", { count: 'exact', head: true })
-            .eq("event_id", event.id)
-            .eq("status", "confirmed");
-          
-          return { ...event, attendee_count: count || 0 };
-        })
-      );
+      // OPTIMIZED: Fetch ALL confirmed attendees for these events in ONE query
+      const eventIds = events.map(e => e.id);
+      const { data: allAttendees, error: countError } = await supabase
+        .from("event_attendees")
+        .select("event_id")
+        .in("event_id", eventIds)
+        .eq("status", "confirmed");
+      
+      if (countError) throw countError;
 
-      return eventsWithCounts;
+      const countMap: Record<string, number> = {};
+      allAttendees?.forEach(a => {
+        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+      });
+
+      return events.map(event => ({
+        ...event,
+        attendee_count: countMap[event.id] || 0
+      }));
     },
     enabled: !!userId,
     staleTime: 30000,
   });
 
-  // 2. Fetch Attending Events
+  // 2. Fetch Attending Events with OPTIMIZED counts
   const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<EventWithStats[]>({
     queryKey: ["events", "attending", userId],
     queryFn: async () => {
       if (!userId) return [];
       
-      // Get event IDs user is attending
       const { data: attendees, error: attendeesError } = await supabase
         .from("event_attendees")
         .select("event_id")
@@ -167,7 +178,6 @@ export default function Events() {
       
       const eventIds = attendees.map((a) => a.event_id);
       
-      // Fetch full event details
       const { data: events, error: eventsError } = await supabase
         .from("events")
         .select(`
@@ -178,28 +188,31 @@ export default function Events() {
         .order("start_date", { ascending: true });
       
       if (eventsError) throw eventsError;
-      if (!events) return [];
+      if (!events || events.length === 0) return [];
 
-      // Get attendee counts
-      const eventsWithCounts = await Promise.all(
-        events.map(async (event) => {
-          const { count } = await supabase
-            .from("event_attendees")
-            .select("*", { count: 'exact', head: true })
-            .eq("event_id", event.id)
-            .eq("status", "confirmed");
-          
-          return { ...event, attendee_count: count || 0 };
-        })
-      );
+      const { data: allAttendees, error: countError } = await supabase
+        .from("event_attendees")
+        .select("event_id")
+        .in("event_id", eventIds)
+        .eq("status", "confirmed");
 
-      return eventsWithCounts;
+      if (countError) throw countError;
+
+      const countMap: Record<string, number> = {};
+      allAttendees?.forEach(a => {
+        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+      });
+
+      return events.map(event => ({
+        ...event,
+        attendee_count: countMap[event.id] || 0
+      }));
     },
     enabled: !!userId,
     staleTime: 30000,
   });
 
-  // 3. Fetch Discover Events (public events not created by user)
+  // 3. Fetch Discover Events with OPTIMIZED counts
   const { data: discoverEvents = [], isLoading: loadingDiscover } = useQuery<EventWithStats[]>({
     queryKey: ["events", "discover", userId, searchQuery],
     queryFn: async () => {
@@ -217,7 +230,6 @@ export default function Events() {
         .order("start_date", { ascending: true })
         .limit(50);
 
-      // Apply search filter
       if (searchQuery) {
         query = query.or(`title.ilike.%${searchQuery}%,location.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%`);
       }
@@ -225,28 +237,32 @@ export default function Events() {
       const { data: events, error } = await query;
       
       if (error) throw error;
-      if (!events) return [];
+      if (!events || events.length === 0) return [];
 
-      // Get attendee counts
-      const eventsWithCounts = await Promise.all(
-        events.map(async (event) => {
-          const { count } = await supabase
-            .from("event_attendees")
-            .select("*", { count: 'exact', head: true })
-            .eq("event_id", event.id)
-            .eq("status", "confirmed");
-          
-          return { ...event, attendee_count: count || 0 };
-        })
-      );
+      const eventIds = events.map(e => e.id);
+      const { data: allAttendees, error: countError } = await supabase
+        .from("event_attendees")
+        .select("event_id")
+        .in("event_id", eventIds)
+        .eq("status", "confirmed");
 
-      return eventsWithCounts;
+      if (countError) throw countError;
+
+      const countMap: Record<string, number> = {};
+      allAttendees?.forEach(a => {
+        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+      });
+
+      return events.map(event => ({
+        ...event,
+        attendee_count: countMap[event.id] || 0
+      }));
     },
     enabled: !!userId && activeTab === "discover",
     staleTime: 30000,
   });
 
-  // 4. Fetch Stats
+  // 4. Fetch Stats (Optimized + Payout Integrated + 2% Fee Logic)
   const { data: stats } = useQuery({
     queryKey: ["events", "stats", userId],
     queryFn: async () => {
@@ -255,61 +271,119 @@ export default function Events() {
         totalAttendees: 0, 
         upcomingEvents: 0,
         pastEvents: 0,
-        totalRevenue: 0
+        netRevenue: 0,
+        walletBalance: 0
       };
       
-      // Get all my events
+      // A. Get all my events
       const { data: myEventsList } = await supabase
         .from('events')
         .select('id, start_date, ticket_price')
         .eq('creator_id', userId);
       
-      if (!myEventsList?.length) return { 
-        totalHosted: 0, 
-        totalAttendees: 0, 
-        upcomingEvents: 0,
-        pastEvents: 0,
-        totalRevenue: 0
-      };
+      if (!myEventsList?.length) {
+        // Even if no events, check wallet in case of other credits
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        return { 
+          totalHosted: 0, 
+          totalAttendees: 0, 
+          upcomingEvents: 0,
+          pastEvents: 0,
+          netRevenue: 0,
+          walletBalance: wallet?.balance || 0
+        };
+      }
       
       const ids = myEventsList.map(e => e.id);
-      const now = new Date();
 
-      // Count total attendees across all events
-      const { count: totalAttendees } = await supabase
+      // B. Fetch ALL attendees for ALL my events
+      const { data: allAttendees } = await supabase
         .from('event_attendees')
-        .select('*', { count: 'exact', head: true })
+        .select('event_id')
         .in('event_id', ids)
         .eq('status', 'confirmed');
 
-      // Calculate revenue (attendees * ticket price)
-      let totalRevenue = 0;
+      const totalAttendees = allAttendees?.length || 0;
+
+      // C. Calculate Lifetime NET Revenue (Deducting 2% fee)
+      const countMap: Record<string, number> = {};
+      allAttendees?.forEach(a => {
+        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+      });
+
+      let grossRevenue = 0;
       for (const event of myEventsList) {
         if (event.ticket_price > 0) {
-          const { count } = await supabase
-            .from('event_attendees')
-            .select('*', { count: 'exact', head: true })
-            .eq('event_id', event.id)
-            .eq('status', 'confirmed');
-          
-          totalRevenue += (count || 0) * event.ticket_price;
+          const count = countMap[event.id] || 0;
+          grossRevenue += count * event.ticket_price;
         }
       }
+      // Apply 2% fee to visual stat (approximate) to match wallet expectations
+      const netRevenue = grossRevenue * 0.98;
 
       const upcomingEvents = myEventsList.filter(e => isFuture(new Date(e.start_date))).length;
       const pastEvents = myEventsList.filter(e => isPast(new Date(e.start_date))).length;
       
+      // D. Fetch Wallet Balance (Real DB value)
+      let walletBalance = 0;
+      try {
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        walletBalance = wallet?.balance || 0;
+      } catch (e) {
+        console.log("Wallet fetch warning:", e);
+      }
+
       return { 
         totalHosted: myEventsList.length,
-        totalAttendees: totalAttendees || 0,
+        totalAttendees,
         upcomingEvents,
         pastEvents,
-        totalRevenue
+        netRevenue, 
+        walletBalance 
       };
     },
     enabled: !!userId && activeTab === "analytics",
     staleTime: 60000,
   });
+
+  // Handle Payout Request
+  const handlePayout = async () => {
+    if (!stats?.walletBalance || stats.walletBalance < 1000) {
+      toast.error("Minimum withdrawal amount is ₦1,000");
+      return;
+    }
+
+    setIsPayoutLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke('request-payout', {
+        body: { amount: stats.walletBalance } // Payout full balance
+      });
+
+      if (error) {
+        const body = await error.context?.json().catch(() => ({}));
+        throw new Error(body.error || error.message || "Failed to process payout");
+      }
+      
+      toast.success("Payout request submitted successfully!");
+      queryClient.invalidateQueries({ queryKey: ["events", "stats", userId] });
+      
+    } catch (error: any) {
+      console.error("Payout error:", error);
+      toast.error(error.message || "Failed to request payout");
+    } finally {
+      setIsPayoutLoading(false);
+    }
+  };
 
   // Event status helper
   const getEventStatus = (startDate: string) => {
@@ -658,14 +732,80 @@ export default function Events() {
                   <Ticket className="w-4 h-4 text-purple-600" />
                 </div>
                 <span className="text-2xl font-bold">
-                  ₦{(stats?.totalRevenue || 0).toLocaleString()}
+                  ₦{(stats?.netRevenue || 0).toLocaleString()}
                 </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Total Revenue
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
+                  Net Earnings <Info className="w-3 h-3" />
                 </span>
               </CardContent>
             </Card>
           </div>
+          
+          {/* --- PAYOUT / WALLET CARD --- */}
+          <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden relative">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
+            
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary/20 p-2 rounded-lg">
+                    <Wallet className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Earnings Wallet</h3>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">Available for daily payout</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground">
+                              -2% Fee
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>A 2% platform fee is deducted from all ticket sales.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm">
+                  Daily Payouts
+                </Badge>
+              </div>
+
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                    Withdrawable Balance
+                  </p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold text-foreground tracking-tight">
+                      ₦{(stats?.walletBalance || 0).toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-medium">.00</span>
+                  </div>
+                </div>
+
+                <Button 
+                  onClick={handlePayout}
+                  disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000}
+                  className="gradient-primary text-white shadow-md shrink-0"
+                >
+                  {isPayoutLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing
+                    </>
+                  ) : (
+                    <>
+                      Request Payout <ArrowUpRight className="w-4 h-4 ml-1" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Insights Card */}
           <Card className="border-muted/50 shadow-sm bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
