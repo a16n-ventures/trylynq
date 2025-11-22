@@ -72,6 +72,9 @@ export default function Friends() {
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [activeTab, setActiveTab] = useState("all");
   const [requestView, setRequestView] = useState<'received' | 'sent'>('received');
+  
+  // FIXED: Add the missing tempPending state
+  const [tempPending, setTempPending] = useState<Set<string>>(new Set());
 
   // --- QUERIES ---
 
@@ -115,7 +118,7 @@ export default function Friends() {
     enabled: !!userId,
   });
 
-  // 3. Outgoing (Sent) - CRITICAL FIX: StaleTime 0 ensures we fetch DB state on every mount
+  // 3. Outgoing (Sent)
   const { data: outgoingRequests = [], isPending: loadingOutgoing } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'outgoing', userId],
     queryFn: async () => {
@@ -133,25 +136,24 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 0, // Always fetch fresh data on mount to verify persistence
+    staleTime: 0,
   });
 
-  // Helper: This is the source of truth for UI buttons
+  // Helper: Source of truth for UI buttons
   const existingIds = useMemo(() => {
     const ids = new Set<string>();
     
-    // Add Accepted Friends
     friends.forEach(f => ids.add(f.requester_id === userId ? f.addressee_id : f.requester_id));
-    // Add Incoming Requesters
     incomingRequests.forEach(r => ids.add(r.requester_id));
-    // Add Outgoing Addressees (People I sent to)
     outgoingRequests.forEach(r => ids.add(r.addressee_id));
     
-    // Add Self
+    // FIXED: Also include tempPending IDs for immediate UI feedback
+    tempPending.forEach(id => ids.add(id));
+    
     if (userId) ids.add(userId);
     
     return ids;
-  }, [friends, incomingRequests, outgoingRequests, userId]);
+  }, [friends, incomingRequests, outgoingRequests, userId, tempPending]);
 
   // 4. Mutuals
   const { data: mutuals = [], isPending: loadingMutuals } = useQuery({
@@ -195,7 +197,6 @@ export default function Friends() {
       let query = supabase.from('profiles').select('*');
       if (debouncedSearch) query = query.ilike('display_name', `%${debouncedSearch}%`);
       
-      // CRITICAL: Correctly filter out existing IDs
       const idList = Array.from(existingIds);
       if (idList.length > 0) {
          query = query.not('user_id', 'in', `(${idList.join(',')})`);
@@ -220,7 +221,6 @@ export default function Friends() {
 
       if (error && error.code !== '23505') throw error;
 
-      // Notification
       try {
         await supabase.from('notifications').insert({
           user_id: targetProfile.user_id,
@@ -233,7 +233,6 @@ export default function Friends() {
       
       return data;
     },
-    // FIX: Update Local State IMMEDIATELY upon click
     onMutate: (targetProfile) => {
       setTempPending(prev => new Set(prev).add(targetProfile.user_id));
     },
@@ -241,12 +240,8 @@ export default function Friends() {
       toast.success('Request sent');
       queryClient.invalidateQueries({ queryKey: ['friendRequests', 'outgoing'] });
       queryClient.invalidateQueries({ queryKey: ['suggestions'] });
-      // NOTE: We do NOT clear tempPending here immediately. 
-      // We let the refetch of 'outgoingRequests' update 'existingIds', 
-      // which naturally keeps the button disabled.
     },
     onError: (error: any, targetProfile) => {
-      // Only if it fails do we revert the button state
       setTempPending(prev => {
         const next = new Set(prev);
         next.delete(targetProfile.user_id);
@@ -256,7 +251,6 @@ export default function Friends() {
     }
   });
 
-  
   const acceptFriendRequest = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
