@@ -73,9 +73,11 @@ export default function Friends() {
   const [activeTab, setActiveTab] = useState("all");
   const [requestView, setRequestView] = useState<'received' | 'sent'>('received');
 
-  // --- QUERIES ---
+  // FIX: Local state for immediate UI feedback
+  const [tempPending, setTempPending] = useState<Set<string>>(new Set());
 
-  // 1. Friends (Accepted)
+  // --- QUERIES ---
+  // 1. Accepted Friends
   const { data: friends = [], isPending: loadingFriends } = useQuery<Friendship[]>({
     queryKey: ['friends', userId],
     queryFn: async () => {
@@ -95,7 +97,7 @@ export default function Friends() {
     enabled: !!userId,
   });
 
-  // 2. Incoming (Received)
+  // 2. Incoming Requests
   const { data: incomingRequests = [], isPending: loadingIncoming } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'incoming', userId],
     queryFn: async () => {
@@ -115,7 +117,7 @@ export default function Friends() {
     enabled: !!userId,
   });
 
-  // 3. Outgoing (Sent) - CRITICAL FIX: StaleTime 0 ensures we fetch DB state on every mount
+  // 3. Outgoing Requests
   const { data: outgoingRequests = [], isPending: loadingOutgoing } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'outgoing', userId],
     queryFn: async () => {
@@ -133,23 +135,16 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 0, // Always fetch fresh data on mount to verify persistence
+    staleTime: 0, 
   });
 
-  // Helper: This is the source of truth for UI buttons
+  // Helper: Combine Database State + Temporary State
   const existingIds = useMemo(() => {
     const ids = new Set<string>();
-    
-    // Add Accepted Friends
     friends.forEach(f => ids.add(f.requester_id === userId ? f.addressee_id : f.requester_id));
-    // Add Incoming Requesters
     incomingRequests.forEach(r => ids.add(r.requester_id));
-    // Add Outgoing Addressees (People I sent to)
     outgoingRequests.forEach(r => ids.add(r.addressee_id));
-    
-    // Add Self
     if (userId) ids.add(userId);
-    
     return ids;
   }, [friends, incomingRequests, outgoingRequests, userId]);
 
@@ -195,7 +190,6 @@ export default function Friends() {
       let query = supabase.from('profiles').select('*');
       if (debouncedSearch) query = query.ilike('display_name', `%${debouncedSearch}%`);
       
-      // CRITICAL: Correctly filter out existing IDs
       const idList = Array.from(existingIds);
       if (idList.length > 0) {
          query = query.not('user_id', 'in', `(${idList.join(',')})`);
@@ -208,32 +202,19 @@ export default function Friends() {
   });
 
   // --- MUTATIONS ---
-    const sendFriendRequest = useMutation({
+  const sendFriendRequest = useMutation({
     mutationFn: async (targetProfile: Profile) => {
       if (!userId) throw new Error("Not authenticated");
-      
-      // Debugging: Check if IDs are valid
-      console.log(`Sending request from ${userId} to ${targetProfile.user_id}`);
 
       const { data, error } = await supabase
         .from('friendships')
-        .insert({ 
-            requester_id: userId, 
-            addressee_id: targetProfile.user_id, 
-            status: 'pending' 
-        })
+        .insert({ requester_id: userId, addressee_id: targetProfile.user_id, status: 'pending' })
         .select()
         .single();
 
-      // Unique violation code (already requested) - Ignore error
-      if (error && error.code === '23505') {
-        console.log("Friend request already exists");
-        return null; 
-      }
+      if (error && error.code !== '23505') throw error;
 
-      if (error) throw error;
-
-      // Send Notification (Fire and forget)
+      // Notification
       try {
         await supabase.from('notifications').insert({
           user_id: targetProfile.user_id,
@@ -246,14 +227,25 @@ export default function Friends() {
       
       return data;
     },
+    // FIX: Update Local State IMMEDIATELY upon click
+    onMutate: (targetProfile) => {
+      setTempPending(prev => new Set(prev).add(targetProfile.user_id));
+    },
     onSuccess: () => {
       toast.success('Request sent');
       queryClient.invalidateQueries({ queryKey: ['friendRequests', 'outgoing'] });
       queryClient.invalidateQueries({ queryKey: ['suggestions'] });
+      // NOTE: We do NOT clear tempPending here immediately. 
+      // We let the refetch of 'outgoingRequests' update 'existingIds', 
+      // which naturally keeps the button disabled.
     },
-    onError: (error: any) => {
-      console.error("Mutation Error Details:", error);
-      // Show the REAL error message from Supabase
+    onError: (error: any, targetProfile) => {
+      // Only if it fails do we revert the button state
+      setTempPending(prev => {
+        const next = new Set(prev);
+        next.delete(targetProfile.user_id);
+        return next;
+      });
       toast.error(error.message || "Failed to send request");
     }
   });
@@ -286,7 +278,6 @@ export default function Friends() {
     }
   });
 
-  // Render Profile Helper
   const renderProfile = (profile: Profile, subtext?: string) => (
     <>
       <Avatar className="w-12 h-12 border border-border/50">
@@ -317,6 +308,9 @@ export default function Friends() {
     });
     return res;
   }, [friends, debouncedSearch, sortOption, userId]);
+
+  // Check Logic: Is this person either already connected OR currently being added locally?
+  const isUserPendingOrAdded = (id: string) => existingIds.has(id) || tempPending.has(id);
 
   return (
     <div className="container-mobile py-4 space-y-4 min-h-[80vh] pb-20">
@@ -424,14 +418,14 @@ export default function Friends() {
           <div className="space-y-2">
             {loadingMutuals ? <FriendSkeleton /> : mutuals.length === 0 ? <div className="text-center py-10 text-muted-foreground">No mutual connections.</div> : 
               mutuals.map((p) => {
-                const isSent = existingIds.has(p.user_id);
+                const isSent = isUserPendingOrAdded(p.user_id);
                 return (
                   <div key={p.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
                     {renderProfile(p, `${p.mutual_count} mutual friends`)}
                     <Button 
                         size="sm" 
                         variant={isSent ? "ghost" : "secondary"} 
-                        disabled={isSent}
+                        disabled={isSent || sendFriendRequest.isPending}
                         onClick={() => sendFriendRequest.mutate(p)}
                         className={isSent ? "text-green-600" : ""}
                     >
@@ -449,7 +443,7 @@ export default function Friends() {
            <div className="space-y-2">
             {loadingSuggestions ? <FriendSkeleton /> : suggestions.length === 0 ? <div className="text-center py-10 text-muted-foreground">No suggestions.</div> : 
                suggestions.map(p => {
-                 const isSent = existingIds.has(p.user_id);
+                 const isSent = isUserPendingOrAdded(p.user_id);
                  return (
                    <div key={p.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
                      {renderProfile(p, "Suggested")}
@@ -457,7 +451,7 @@ export default function Friends() {
                         size="sm" 
                         className={isSent ? "bg-transparent border border-primary/20 text-muted-foreground" : "gradient-primary text-white"}
                         variant={isSent ? "outline" : "default"}
-                        disabled={isSent}
+                        disabled={isSent || sendFriendRequest.isPending}
                         onClick={() => sendFriendRequest.mutate(p)}
                      >
                        {isSent ? <> <Clock className="w-4 h-4 mr-1" /> Pending </> : <> <UserPlus className="w-4 h-4 mr-1" /> Add </>}
